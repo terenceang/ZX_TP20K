@@ -155,7 +155,10 @@ module sd_vol #(
     output reg         lib_ent,
     output reg         lib_done,
     output reg         lib_found,
-    output reg         lib_fail
+    output reg         lib_fail,
+    // ZX tape: what drive 0 holds (the config's TAPE= at boot, else the last find)
+    output wire [87:0] d0_name,
+    output wire [31:0] d0_size
 );
     // ---- SPI byte engine (src/spi_byte.v) ----
     reg        fast;
@@ -247,6 +250,8 @@ module sd_vol #(
     reg [4:0]  found = 5'd0;            // directory hits: drives 0-3, config 4
     reg [31:0] fclus [0:4];
     reg [31:0] fsize [0:4];
+    assign d0_name = nm[0];
+    assign d0_size = fsize[0];
     reg [4:0]  mt = 5'd0;               // the entry being read still matches
     reg [31:0] ec = 0, es = 0;          // the entry's cluster and size so far
     reg [27:0] c0 = 0, clast = 0;      // a file's first and last cluster

@@ -238,14 +238,42 @@ export default function App() {
     rerender()
   }, [rerender])
 
-  // No ZXCONFIG.TXT write here: the library build never hands the boot mount
-  // to the deck, and a name the board cannot mount latches drive 0's failure.
-  const onLoad = useCallback(() => {
-    const i = lib.current.selected
+  const writeTapeConfig = (card, name) =>
+    card.upload('ZXCONFIG.TXT', new TextEncoder().encode(name ? `TAPE=${name}\r\n` : '; no tape in the player\r\n'))
+
+  // ZXCONFIG.TXT's TAPE= is the tape in the player: the board mounts it at
+  // boot (and on reset), so a load survives a power cycle.  Best effort: a
+  // card that cannot be written still loads, it just will not persist.
+  const saveTape = useCallback(async (name) => {
+    try {
+      await withCard((card) => writeTapeConfig(card, name))
+    } catch (err) {
+      console.warn('ZXCONFIG.TXT not written:', err)
+    }
+  }, [withCard])
+
+  const onLoad = useCallback(async (i) => {
+    const l = lib.current
     if (i < 0) return
-    if (demo.current) demo.current.select(i)
-    else send(encodeSelectTape(i))
-  }, [send])
+    l.selected = i
+    rerender()
+    if (l.loaded >= 0) {
+      const cur = l.displayName(l.entries[l.loaded]?.name || '')
+      const msg = i === l.loaded
+        ? `${cur} is already in the player. Load it again?`
+        : `${cur} is in the player. Replace it with ${l.displayName(l.entries[i].name)}?`
+      if (!window.confirm(msg)) return
+    }
+    if (demo.current) return demo.current.select(i)
+    await saveTape(l.entries[i].name)
+    send(encodeSelectTape(i))
+  }, [send, rerender, saveTape])
+
+  const onEject = useCallback(async () => {
+    if (demo.current) return demo.current.eject()
+    send(encodeEjectTape())
+    await saveTape(null)
+  }, [send, saveTape])
 
   const onInstantLoad = useCallback(() => {
     if (demo.current) return
@@ -393,6 +421,7 @@ export default function App() {
         const f = await card.fs.find(name)
         if (!f) throw new Error(`${name} is not on the card.`)
         await card.remove(f)
+        if (i === lib.current.loaded) await writeTapeConfig(card, null)
       })
     } catch (err) {
       console.error('SD card delete failed:', err)
@@ -445,7 +474,7 @@ export default function App() {
         uploadProgress={uploadProgress}
         onSelect={onSelect}
         onLoad={onLoad}
-        onEject={() => (demo.current ? demo.current.eject() : send(encodeEjectTape()))}
+        onEject={onEject}
         onPlay={() => (demo.current ? demo.current.play() : send(encodePlayTape()))}
         onPause={() => (demo.current ? demo.current.pause() : send(encodePauseTape()))}
         onRewind={() => (demo.current ? demo.current.rewind() : send(encodeRewindTape()))}

@@ -471,14 +471,16 @@ footer code { color: var(--ink); }
 .cassette .window { fill: #15181b; stroke: #0a0c0e; stroke-width: 1.5; }
 .cassette .window-in { fill: #07090a; }
 
-.cassette .pack { fill: #4b525a; stroke: #2a2e33; stroke-width: 1; }
+.cassette .pack { fill: #4b525a; stroke: #2a2e33; stroke-width: 1; transition: r 0.25s linear; }
 .cassette .hub { fill: #8b939b; }
 .cassette .spoke { fill: #24272b; }
 .cassette .axle { fill: #1a1d20; }
 .cassette .tape { fill: #5b636c; }
 
 .cassette .reel.spinning { animation: reel-spin 2.6s linear infinite; }
-@keyframes reel-spin { to { transform: rotate(360deg); } }
+/* tape runs left to right past the head along the bottom edge, so both
+   reels turn anticlockwise: the supply pays out, the take-up winds on */
+@keyframes reel-spin { to { transform: rotate(-360deg); } }
 
 .cassette .counter-bg { fill: #0b0d0f; stroke: #2a2e33; }
 .cassette .counter {
@@ -891,6 +893,7 @@ footer code { color: var(--ink); }
 }
 .tc-del:hover:not(:disabled) { color: #ff7b72; border-color: #5a2a2a; }
 .tc-del:disabled { opacity: 0.3; cursor: default; }
+.tc-load:hover:not(:disabled) { color: #7ee787; border-color: #2a5a32; }
 
 /* the deck's piano keys: rewind, play, pause, eject */
 .deck-keys { display: flex; gap: 4px; margin: 10px 0 8px; }

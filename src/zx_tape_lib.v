@@ -98,6 +98,8 @@ module zx_tape_lib (
     wire [87:0] lib_name;
     wire [31:0] lib_size;
     wire        lib_ent, lib_done, lib_found, lib_fail;
+    wire [87:0] d0_name;
+    wire [31:0] d0_size;
 
     wire        f_up_go;
     wire        f_up_drive;
@@ -188,7 +190,8 @@ module zx_tape_lib (
         .lib_count(lib_count), .lib_name(lib_name), .lib_size(lib_size),
         .lib_ent(lib_ent), .lib_done(lib_done), .lib_found(lib_found),
         .lib_fail(lib_fail),
-        .lib_busy(lib_busy)
+        .lib_busy(lib_busy),
+        .d0_name(d0_name), .d0_size(d0_size)
     );
 
     // ---- one byte at a time into the store ---------------------------
@@ -223,6 +226,7 @@ module zx_tape_lib (
     reg        tap_start = 1'b0;
     reg        start_pending = 1'b0;
     reg        started = 1'b0;
+    reg        boot_open = 1'b1;    // ZXCONFIG.TXT's tape may still arrive
     wire       tap_done;            // the player reached the end of the image
 
     wire       tap_rd_req;
@@ -308,6 +312,7 @@ module zx_tape_lib (
             state        <= S_EMPTY;
             state_q      <= S_EMPTY;
             sel_pending  <= 1'b0;
+            boot_open    <= 1'b1;
             boot_cnt     <= 16'd0;
             auto_listed  <= 1'b0;
 
@@ -334,11 +339,22 @@ module zx_tape_lib (
                 end
             end
 
+            // ---- the tape ZXCONFIG.TXT names: sd_vol streams it at boot,
+            // so it goes in the player as if the page had picked it
+            if (boot_open && f_up_go) begin
+                boot_open <= 1'b0;
+                img_len   <= d0_size[23:0];
+                state     <= S_LOAD;
+            end
+
             // ---- the page's commands
             if (cmd_list) begin
                 lib_find <= 1'b0;
                 lib_go   <= 1'b1;
+                state_q  <= 3'd7;              // a fresh page hears the deck again
             end
+
+            if (cmd_select || cmd_eject) boot_open <= 1'b0;
 
             if (cmd_select) begin
                 sel_idx     <= cmd_idx;
@@ -406,7 +422,9 @@ module zx_tape_lib (
             end
             // ---- pause holds, play or pause again resumes
             if (cmd_pause && state == S_PLAY)  state <= S_PAUSE;
-            if ((cmd_pause || cmd_play) && state == S_PAUSE) state <= S_PLAY;
+            // ...and so does the ROM's next LOAD (Stop on the page is this
+            // hold): a multi-load game's next part runs on from the head
+            if ((cmd_pause || cmd_play || tape_load) && state == S_PAUSE) state <= S_PLAY;
 
             // ---- rewind: head to the start, stopped, waiting for LOAD "" or play
             if (cmd_rewind && (state == S_READY || state == S_PLAY ||
@@ -433,6 +451,9 @@ module zx_tape_lib (
             if (lib_ent) begin
                 push_frame(2'd0, lib_name, lib_size);
                 listed <= listed + 5'd1;
+                // the player's row, by name: the boot tape has no index, and a
+                // delete above it moves it
+                if (state != S_EMPTY && lib_name == d0_name) sel_idx <= listed;
             end
             if (lib_done) begin
                 push_frame(2'd1, 88'd0, {27'd0, listed});
@@ -446,7 +467,8 @@ module zx_tape_lib (
             end
 
             // ---- where the tape has got to, while it matters
-            if (rep_tick && (state == S_LOAD || state == S_PLAY) )
+            // (held states too, so a page that connects late learns the row)
+            if (rep_tick && state != S_EMPTY && state != S_ERR)
                 push_frame(2'd3, {56'd0, (state == S_LOAD) ? wr_count : rd_count},
                            {8'd0, img_len});
 

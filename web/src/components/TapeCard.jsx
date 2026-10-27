@@ -2,17 +2,44 @@
 //  TapeCard.jsx -- the tape library and the deck
 //
 //  The library is the card's: the board lists every .TAP in the root
-//  directory and the page may only pick from that list.  Picking a row and
-//  pressing LOAD streams it from the card into the DDR3 player; the ROM's own
+//  directory and the page may only pick from that list.  A row's load button
+//  streams it from the card into the DDR3 player; the ROM's own
 //  LOAD "" (or the PLAY button) starts it.  Upload and each row's delete button
 //  edit the card itself (App.jsx withCard), then the board is asked to relist.
 // ============================================================================
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import Cassette from './Cassette.jsx'
 import { DECK } from '../protocol.js'
 
 const kb = (n) => (n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`)
+
+// Tape time: a 5 s leader plus the data at the ROM's average byte, eight bits
+// of 855 / 1710 T-state half-pulse pairs, half of them ones, at 3.5 MHz.
+// ponytail: pilots and gaps between blocks are not counted (the page only
+// knows the size); the clock waits at the end for the board's END.
+const LEADER_SEC = 5
+const BYTE_SEC = (8 * (2 * 855 + 2 * 1710)) / 2 / 3_500_000
+export const tapeSeconds = (bytes) => (bytes > 0 ? LEADER_SEC + bytes * BYTE_SEC : 0)
+
+/** Seconds of tape played: runs while PLAYING, holds otherwise. */
+function usePlayClock(state, total) {
+  const [t, setT] = useState(0)
+  useEffect(() => {
+    if (state === DECK.EMPTY || state === DECK.LOADING || state === DECK.READY) setT(0)
+    if (state === DECK.ENDED) setT(total)
+    if (state !== DECK.PLAYING) return
+    setT((x) => (x >= total ? 0 : x))           // play after the end starts over
+    let last = performance.now()
+    const id = setInterval(() => {
+      const now = performance.now()
+      setT((x) => Math.min(total, x + (now - last) / 1000))
+      last = now
+    }, 250)
+    return () => clearInterval(id)
+  }, [state, total])
+  return t
+}
 
 export default function TapeCard({
   library,
@@ -34,21 +61,14 @@ export default function TapeCard({
 }) {
   const { entries, selected, loaded, state, pos, len } = library
   const entry = library.deckEntry
-  const selectedEntry = selected >= 0 ? entries[selected] : null
-  const selectedExt = (selectedEntry?.name.split('.').pop() || '').toUpperCase()
-  const isSelectedZ80 = selectedExt === 'Z80'
-  const canAct = connected && selected >= 0 && state !== DECK.LOADING
-  const canLoad = canAct && !isSelectedZ80
   const canEject = connected && loaded >= 0
   const canPlay = connected && (state === DECK.READY || state === DECK.ENDED || state === DECK.PAUSED)
   const playing = state === DECK.PLAYING
   const paused = state === DECK.PAUSED
   const canRewind = connected && library.held
-
-  const onMainAction = () => {
-    if (isSelectedZ80) onLoadSnapshot(selectedEntry)
-    else onLoad()
-  }
+  const tapeBytes = len || (entry ? entry.size : 0)
+  const total = tapeSeconds(tapeBytes)
+  const elapsed = usePlayClock(state, total)
 
   return (
     <section className="tape-card">
@@ -114,18 +134,22 @@ export default function TapeCard({
                         (i === selected ? ' sel' : '') +
                         (i === loaded ? ' in-player' : '')
                       }
-                      onClick={() => {
-                        onSelect(i)
-                        if (isZ80) {
-                          onLoadSnapshot(t)
-                        }
-                      }}
-                      title={`${t.name}\n${kb(t.size)}${i === loaded ? '\nin the player' : ''}${isZ80 ? '\nClick to load snapshot' : ''}`}
+                      onClick={() => onSelect(i)}
+                      title={`${t.name}\n${kb(t.size)}${i === loaded ? '\nin the player' : ''}`}
                     >
                       <span className="tc-row-name">{library.displayName(t.name)}</span>
                       <span className={`tc-badge badge-${ext.toLowerCase()}`}>{ext}</span>
                       <span className="tc-row-size">{kb(t.size)}</span>
                       {i === loaded && <span className="tc-row-dot" title="in the player" />}
+                    </button>
+                    <button
+                      className="tc-del tc-load"
+                      onClick={() => (isZ80 ? (onSelect(i), onLoadSnapshot(t)) : onLoad(i))}
+                      disabled={!connected || uploadProgress !== null || state === DECK.LOADING}
+                      title={isZ80 ? 'Restore Z80 snapshot into memory' : 'Load tape into player'}
+                      aria-label={`Load ${library.displayName(t.name)}`}
+                    >
+                      &#9660;
                     </button>
                     <button
                       className="tc-del"
@@ -147,8 +171,9 @@ export default function TapeCard({
         <div className="tc-deck">
           <Cassette
             name={entry ? library.displayName(entry.name) : ''}
-            size={len || (entry ? entry.size : 0)}
-            pos={pos}
+            size={tapeBytes}
+            elapsed={elapsed}
+            total={total}
             state={state}
             spinning={playing}
           />
@@ -160,6 +185,9 @@ export default function TapeCard({
             <button className={'dk play' + (playing ? ' on' : '')} onClick={onPlay} disabled={!canPlay} title="Play" aria-label="Play">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l12-7z" /></svg>
             </button>
+            <button className="dk stop" onClick={onPause} disabled={!playing || !connected} title="Stop where it is (LOAD &quot;&quot; or Play carries on)" aria-label="Stop">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h12v12H6z" /></svg>
+            </button>
             <button className={'dk pause' + (paused ? ' on' : '')} onClick={onPause} disabled={!(playing || paused) || !connected} title={paused ? 'Resume' : 'Pause'} aria-label={paused ? 'Resume' : 'Pause'}>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
             </button>
@@ -169,14 +197,6 @@ export default function TapeCard({
           </div>
 
           <div className="transport">
-            <button
-              className={'tp ' + (isSelectedZ80 ? 'snap-load' : 'load')}
-              onClick={onMainAction}
-              disabled={!canAct}
-              title={isSelectedZ80 ? 'Restore Z80 snapshot into memory' : 'Load tape into player'}
-            >
-              <span className="tp-icon" aria-hidden="true">&#9660;</span> {isSelectedZ80 ? 'Restore' : 'Load'}
-            </button>
             <button
               className="tp instant"
               onClick={onInstantLoad}

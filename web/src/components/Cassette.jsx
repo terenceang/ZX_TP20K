@@ -2,8 +2,8 @@
 //  Cassette.jsx -- the tape in the player, drawn as a C60
 //
 //  The reels turn while the tape is playing and hold still when it is not;
-//  the pack of tape moves from the left hub to the right as the image is
-//  played, so the picture is the position.  Everything is SVG so it scales
+//  the pack of tape moves from the left hub to the right as the tape plays,
+//  so the picture is the position.  Everything is SVG so it scales
 //  with the card, and every moving part is driven by props -- no local state,
 //  no timers here.
 // ============================================================================
@@ -37,11 +37,14 @@ function Reel({ cx, cy, pack, spinning }) {
   )
 }
 
-export default function Cassette({ name, size = 0, pos = 0, state = DECK.EMPTY, spinning = false }) {
-  const f = size > 0 ? Math.max(0, Math.min(1, pos / size)) : 0
+const mmss = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`
+
+/** `elapsed` and `total` are tape time in seconds (TapeCard's play clock). */
+export default function Cassette({ name, size = 0, elapsed = 0, total = 0, state = DECK.EMPTY, spinning = false }) {
+  const f = total > 0 ? Math.max(0, Math.min(1, elapsed / total)) : 0
   const packL = PACK_MIN + (PACK_MAX - PACK_MIN) * (1 - f)
   const packR = PACK_MIN + (PACK_MAX - PACK_MIN) * f
-  const counter = String(Math.floor(pos / 1024) % 10000).padStart(4, '0')
+  const counter = mmss(Math.min(elapsed, total))
   const label = name || 'no tape'
 
   return (
@@ -57,7 +60,7 @@ export default function Cassette({ name, size = 0, pos = 0, state = DECK.EMPTY, 
         {label.length > 34 ? label.slice(0, 33) + '\u2026' : label}
       </text>
       <text x="34" y="64" className="label-sub">
-        {size > 0 ? `${(size / 1024).toFixed(1)} KB` : '\u2014'}
+        {size > 0 ? `${mmss(total)} \u00b7 ${(size / 1024).toFixed(1)} KB` : '\u2014'}
         {size > 0 ? ' \u00b7 ZX Spectrum 48K' : ''}
       </text>
       <text x="326" y="64" className="label-side" textAnchor="end">
