@@ -173,10 +173,10 @@ module tb_type;
         end
     endtask
 
-    // a quote chord that is followed by the SAME chord again: the page gives
-    // the ROM a longer all-up window (repeatGapMs) so a scan samples the
-    // release -- the decoder is edge-on-raw-value, and an unsampled release
-    // makes the repeat look like "still held"
+    // a quote chord followed by the SAME chord: the trailing RPT gap is the
+    // all-up window before the repeat.  The ROM's KSTATE keeps a released
+    // key latched ~5 interrupts (~100 ms); a re-press inside that window is
+    // treated as the same press and dropped, so the repeat must wait it out.
     task chord_repeat(input [5:0] shift, input [5:0] main);
         begin
             key(shift, 1'b1); key(main, 1'b1);
@@ -271,11 +271,11 @@ module tb_type;
         if (variant == 3) begin
             quotes_v3;
         end else if (variant == 2) begin
-            chord_v2(6'd36, 6'd25);
-            chord_v2(6'd36, 6'd25);
+            chord_repeat(6'd36, 6'd25);     // quote 1: long all-up after it
+            chord_v2(6'd36, 6'd25);         // quote 2: different keys next (ENTER)
         end else begin
-            chord_v1(6'd36, 6'd25);
-            chord_repeat(6'd36, 6'd25);      // second quote: same chord again
+            chord_repeat(6'd36, 6'd25);     // quote 1: long all-up after it
+            chord_v1(6'd36, 6'd25);         // quote 2: next is ENTER, a new key
         end
 
         decode_line;

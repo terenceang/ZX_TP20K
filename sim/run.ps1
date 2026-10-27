@@ -108,6 +108,11 @@ if (Test-Path (Join-Path $root 'roms\zx48.hex')) {
     # margin for the frame capture.  Run tb_zx with +fast=0 +ms=1800 for the
     # honest full-rate boot.
     Run-Tb 'tb_zx' $core -PlusArgs @('+fast=2', '+ms=300')
+
+    # tb_type types the LOAD "" macro into the real ROM with the page's
+    # pacing (typeText) and checks the editor line plus the tape_load pulse;
+    # +rpt=140 mirrors the page's repeatGapMs default.
+    Run-Tb 'tb_type' $core -PlusArgs @('+fast=2', '+quiet=1', '+rpt=140')
 } else {
     if ($Target -eq 'tb_zx' -or $Target -eq 'tb_top') { throw "tb_zx/tb_top need roms\zx48.hex (make rom)" }
 }
