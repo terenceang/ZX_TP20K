@@ -114,6 +114,8 @@ if (Test-Path (Join-Path $root 'roms\zx48.hex')) {
     # pacing (typeText) and checks the editor line plus the tape_load pulse;
     # +rpt=140 mirrors the page's repeatGapMs default.
     Run-Tb 'tb_type' $core -PlusArgs @('+fast=2', '+quiet=1', '+rpt=140')
+    # ...and with the instant-load trap armed: LD-BYTES reads port 0x5B
+    Run-Tb 'tb_type' $core -PlusArgs @('+fast=2', '+quiet=1', '+rpt=140', '+instant=1')
 } else {
     if ($Target -eq 'tb_zx' -or $Target -eq 'tb_top') { throw "tb_zx/tb_top need roms\zx48.hex (make rom)" }
 }

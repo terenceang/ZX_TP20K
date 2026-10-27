@@ -17,7 +17,6 @@ import {
   encodePauseTape,
   encodeRewindTape,
   encodeTapeAudio,
-  encodeInstantLoad,
   encodeVersionRequest,
   encodeScreenCapture,
   encodeSnapEnter,
@@ -25,14 +24,21 @@ import {
   encodeSnapBorder,
   encodeSnapRegs,
   encodeSnapExecute,
+  encodeInstantLoad,
+  DECK,
   CARD_ENTER,
   CARD_EXIT,
 } from './protocol.js'
 import { parseZ80Snapshot } from './z80-snapshot.js'
+import { tapeToSnapshot } from './tape-snapshot.js'
 import { typeLoadCommand } from './tape.js'
 import versionInfo from './version.json'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// instant load runs the tape through the real ROM, which is not in the repo
+// (roms/README.md): bundled when `make rom` has fetched it, absent otherwise
+const ROM_URL = Object.values(import.meta.glob('../../roms/zx48.rom', { query: '?url', import: 'default', eager: true }))[0]
 
 const DEMO = typeof location !== 'undefined' && /[?&]demo=1\b/.test(location.search)
 
@@ -289,12 +295,80 @@ export default function App() {
     await saveTape(null)
   }, [send, saveTape])
 
-  const onInstantLoad = useCallback(() => {
-    if (demo.current) return
-    send(encodeInstantLoad())
-    // Auto-type LOAD "" so the game runs immediately
-    setTimeout(() => typeLoadCommand(send), 100)
+  const readFromCard = useCallback((name, what) => withCard(async (card) => {
+    const f = await card.fs.find(name)
+    if (!f) throw new Error(`${name} is not on the card.`)
+    return card.download(f, (done, total) => {
+      const percent = total ? Math.round((done / total) * 100) : 0
+      setUploadProgress({
+        percent,
+        detail: `Reading ${what}: ${Math.round(done / 1024)} / ${Math.round(total / 1024)} KB`,
+      })
+    })
+  }), [withCard])
+
+  // a parsed snapshot ({ ram, border, regs }) into the running Spectrum;
+  // `armed` is sent while the CPU is held (instant load's trap)
+  const injectSnapshot = useCallback(async (snap, armed = null) => {
+    setUploadProgress({ percent: 100, detail: 'Injecting snapshot into memory...' })
+
+    // Enter snapshot mode (pause CPU)
+    send(encodeSnapEnter())
+    await sleep(10)
+    if (armed) send(armed)
+
+    // Set border
+    send(encodeSnapBorder(snap.border))
+
+    // Stream 48K RAM into memory in 1KB chunks
+    const CHUNK = 1024
+    for (let addr = 0; addr < 49152; addr += CHUNK) {
+      const chunk = snap.ram.subarray(addr, Math.min(addr + CHUNK, 49152))
+      send(encodeSnapChunk(addr, chunk))
+      await sleep(15)
+    }
+
+    // Set CPU registers
+    send(encodeSnapRegs(snap.regs))
+    await sleep(10)
+
+    // Release CPU and jump to PC
+    send(encodeSnapExecute())
   }, [send])
+
+  // Instant load: the deck's tape is run through a 48K in the page
+  // (tape-snapshot.js), then one of two paths:
+  //  * a multi-load that loads through the ROM, with that .TAP in the board's
+  //    player: the machine as it entered LD-BYTES goes in with the board's
+  //    trap armed, so this load and every later part come off DDR3;
+  //  * anything else (single loads, custom loaders, TZX): the machine the
+  //    tape left behind goes in as a snapshot.
+  const onInstantLoad = useCallback(async () => {
+    if (demo.current) return
+    const entry = lib.current.deckEntry
+    if (!entry) return
+    try {
+      if (!ROM_URL) throw new Error('The 48K ROM is not bundled: run `make rom`, then rebuild the page.')
+      const rom = new Uint8Array(await (await fetch(ROM_URL)).arrayBuffer())
+      const tape = await readFromCard(entry.name, 'tape')
+      const snap = await tapeToSnapshot(rom, tape, (f) => {
+        setUploadProgress({ percent: Math.round(f * 100), detail: `Loading ${entry.name}...` })
+      })
+      const l = lib.current
+      const inPlayer = /\.tap$/i.test(entry.name) && l.loaded >= 0 &&
+        l.entries[l.loaded]?.name === entry.name && l.state !== DECK.ERROR
+      if (!snap.custom && snap.unloaded > 0 && snap.entry && inPlayer) {
+        await injectSnapshot(snap.entry, encodeInstantLoad())
+      } else {
+        await injectSnapshot(snap)
+      }
+    } catch (err) {
+      console.error('Instant load failed:', err)
+      alert(`Instant load failed: ${err.message}`)
+    } finally {
+      setUploadProgress(null)
+    }
+  }, [readFromCard, injectSnapshot])
 
   const onTypeLoad = useCallback(() => {
     if (demo.current) return
@@ -313,50 +387,14 @@ export default function App() {
 
     try {
       setUploadProgress({ percent: 0, detail: 'Reading snapshot from SD card...' })
-      const name = entry.name
-      const fileData = await withCard(async (card) => {
-        const f = await card.fs.find(name)
-        if (!f) throw new Error(`${name} is not on the card.`)
-        return card.download(f, (done, total) => {
-          const percent = total ? Math.round((done / total) * 100) : 0
-          setUploadProgress({
-            percent,
-            detail: `Reading snapshot: ${Math.round(done / 1024)} / ${Math.round(total / 1024)} KB`,
-          })
-        })
-      })
-
-      setUploadProgress({ percent: 100, detail: 'Injecting snapshot into memory...' })
-      const snap = parseZ80Snapshot(fileData)
-
-      // Enter snapshot mode (pause CPU)
-      send(encodeSnapEnter())
-      await sleep(10)
-
-      // Set border
-      send(encodeSnapBorder(snap.border))
-
-      // Stream 48K RAM into memory in 1KB chunks
-      const CHUNK = 1024
-      for (let addr = 0; addr < 49152; addr += CHUNK) {
-        const chunk = snap.ram.subarray(addr, Math.min(addr + CHUNK, 49152))
-        send(encodeSnapChunk(addr, chunk))
-        await sleep(15)
-      }
-
-      // Set CPU registers
-      send(encodeSnapRegs(snap.regs))
-      await sleep(10)
-
-      // Release CPU and jump to PC
-      send(encodeSnapExecute())
+      await injectSnapshot(parseZ80Snapshot(await readFromCard(entry.name, 'snapshot')))
       setUploadProgress(null)
     } catch (err) {
       console.error('Snapshot loading failed:', err)
       alert(`Snapshot loading failed: ${err.message}`)
       setUploadProgress(null)
     }
-  }, [send, withCard])
+  }, [readFromCard, injectSnapshot])
 
   // Upload exclusively to the SD card
   const onUpload = useCallback(async (file) => {

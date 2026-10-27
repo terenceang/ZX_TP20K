@@ -123,28 +123,28 @@ export function parseZ80Snapshot(bytes) {
     }
   }
 
-  // Build the 28-byte register buffer expected by zx_snap.v:
-  // 0..1: PC, 2..3: SP, 4..5: AF, 6..7: BC, 8..9: DE, 10..11: HL
-  // 12..13: AF', 14..15: BC', 16..17: DE', 18..19: HL'
-  // 20..21: IX, 22..23: IY
-  // 24: I, 25: R, 26: IM (0, 1, 2), 27: IFF1 (0: DI, 1: EI)
-  const regs = new Uint8Array(28)
-  regs[0] = pc & 0xff; regs[1] = (pc >> 8) & 0xff
-  regs[2] = sp & 0xff; regs[3] = (sp >> 8) & 0xff
-  regs[4] = f;         regs[5] = a
-  regs[6] = c;         regs[7] = b
-  regs[8] = e;         regs[9] = d
-  regs[10] = l;        regs[11] = h
-  regs[12] = f_;       regs[13] = a_
-  regs[14] = c_;       regs[15] = b_
-  regs[16] = e_;       regs[17] = d_
-  regs[18] = l_;       regs[19] = h_
-  regs[20] = ix & 0xff; regs[21] = (ix >> 8) & 0xff
-  regs[22] = iy & 0xff; regs[23] = (iy >> 8) & 0xff
-  regs[24] = i
-  regs[25] = r
-  regs[26] = im
-  regs[27] = iff1
+  const regs = regs28({
+    pc, sp, af: (a << 8) | f, bc: (b << 8) | c, de: (d << 8) | e, hl: (h << 8) | l,
+    af_: (a_ << 8) | f_, bc_: (b_ << 8) | c_, de_: (d_ << 8) | e_, hl_: (h_ << 8) | l_,
+    ix, iy, i, r, im, iff1,
+  })
 
   return { ram, border, regs, pc, sp }
+}
+
+/**
+ * The 28-byte register buffer zx_snap.v expects (FC 04):
+ * 0..1 PC, 2..3 SP, 4..5 AF, 6..7 BC, 8..9 DE, 10..11 HL,
+ * 12..13 AF', 14..15 BC', 16..17 DE', 18..19 HL', 20..21 IX, 22..23 IY,
+ * 24 I, 25 R, 26 IM (0, 1, 2), 27 IFF1 (0: DI, 1: EI); pairs low byte first.
+ */
+export function regs28(o) {
+  const out = new Uint8Array(28)
+  const pairs = [o.pc, o.sp, o.af, o.bc, o.de, o.hl, o.af_, o.bc_, o.de_, o.hl_, o.ix, o.iy]
+  pairs.forEach((v, k) => { out[2 * k] = v & 0xff; out[2 * k + 1] = (v >> 8) & 0xff })
+  out[24] = o.i
+  out[25] = o.r
+  out[26] = o.im
+  out[27] = o.iff1 ? 1 : 0
+  return out
 }

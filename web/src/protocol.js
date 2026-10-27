@@ -143,7 +143,7 @@ export function encodeTapeAudio(on) {
   return Uint8Array.from([LIB_CMD, on ? LIB.AUDIO_ON : LIB.AUDIO_OFF])
 }
 
-/** Activate instant load for the loaded tape. */
+/** Arm the instant-load trap on the player's .TAP: LD-BYTES reads DDR3 from its start. */
 export function encodeInstantLoad() {
   return Uint8Array.from([LIB_CMD, LIB.INSTANT])
 }

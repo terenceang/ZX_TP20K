@@ -2,8 +2,8 @@
 `ifndef VERSION_VH
 `define VERSION_VH
 
-`define FW_VER_TEXT "\015\012FW:v1.0.10\015\012"
+`define FW_VER_TEXT "\015\012FW:v1.0.11\015\012"
 `define FW_VER_LEN  8'd14
-`define FW_VER_RAW  "\r\nFW:v1.0.10\r\n"
+`define FW_VER_RAW  "\r\nFW:v1.0.11\r\n"
 
 `endif

@@ -213,50 +213,130 @@ module zx_core #(
             ram[cpu_ram_a] <= cpu_dout;
     end
 
-    // ROM trap for Instant Load at 0x0556 (LD-BYTES)
-    function [7:0] trap_rom_byte(input [4:0] off);
+    // ------------------------------------------------------------------
+    // Instant load, DivMMC style: while it is armed, LD-BYTES from 0x0562
+    // reads as this routine, which takes the .TAP's bytes from port 0x5B
+    // instead of timing edges.  0x0562 is DivMMC's load trap too: by then the
+    // ROM has put the flag and CF = LOAD (NC VERIFY) in AF', done DI, set the
+    // border and pushed SA/LD-RET (0x053F: border back, BREAK check, EI), so
+    // the routine only moves DE bytes to IX and RETs with CF = ok.  A block whose flag does not
+    // match, or that VERIFY rejects, is read to its end and fails, so the
+    // next call starts on the next block -- LOAD "name" passes over other
+    // files as on a real tape.  Past the end the port reads 00 00 as the
+    // length: NC, and the ROM keeps looking until BREAK.
+    // ponytail: ROM loads only -- a custom loader that jumps into the middle
+    // of LD-BYTES lands in this routine.  The page only arms it for tapes it
+    // has seen load through the ROM (web/src/tape-snapshot.js).
+    // ------------------------------------------------------------------
+    function [7:0] trap_byte(input [6:0] off);
         case (off)
-            5'd0:  trap_rom_byte = 8'h08; // EX AF, AF'
-            5'd1:  trap_rom_byte = 8'h30; // JR NC, +24
-            5'd2:  trap_rom_byte = 8'h18;
-            5'd3:  trap_rom_byte = 8'hDB; // IN A, (5B)
-            5'd4:  trap_rom_byte = 8'h5B;
-            5'd5:  trap_rom_byte = 8'hDB; // IN A, (5B)
-            5'd6:  trap_rom_byte = 8'h5B;
-            5'd7:  trap_rom_byte = 8'hDB; // IN A, (5B) - flag
-            5'd8:  trap_rom_byte = 8'h5B;
-            // loop:
-            5'd9:  trap_rom_byte = 8'h7A; // LD A, D
-            5'd10: trap_rom_byte = 8'hB3; // OR E
-            5'd11: trap_rom_byte = 8'h28; // JR Z, +10 (done)
-            5'd12: trap_rom_byte = 8'h0A;
-            5'd13: trap_rom_byte = 8'hDB; // IN A, (5B) - payload
-            5'd14: trap_rom_byte = 8'h5B;
-            5'd15: trap_rom_byte = 8'hDD; // LD (IX+0), A
-            5'd16: trap_rom_byte = 8'h77;
-            5'd17: trap_rom_byte = 8'h00;
-            5'd18: trap_rom_byte = 8'hDD; // INC IX
-            5'd19: trap_rom_byte = 8'h23;
-            5'd20: trap_rom_byte = 8'h1B; // DEC DE
-            5'd21: trap_rom_byte = 8'h18; // JR loop (-14)
-            5'd22: trap_rom_byte = 8'hF2;
-            // done:
-            5'd23: trap_rom_byte = 8'hDB; // IN A, (5B) - checksum
-            5'd24: trap_rom_byte = 8'h5B;
-            5'd25: trap_rom_byte = 8'h37; // SCF
-            5'd26: trap_rom_byte = 8'hC9; // RET
-            // verify exit:
-            5'd27: trap_rom_byte = 8'h37; // SCF
-            5'd28: trap_rom_byte = 8'hC9; // RET
-            default: trap_rom_byte = 8'h00; // NOP
+            7'h00: trap_byte = 8'hDB;  // IN A,($5B)       ; block length
+            7'h01: trap_byte = 8'h5B;
+            7'h02: trap_byte = 8'h4F;  // LD C,A
+            7'h03: trap_byte = 8'hDB;  // IN A,($5B)
+            7'h04: trap_byte = 8'h5B;
+            7'h05: trap_byte = 8'h47;  // LD B,A
+            7'h06: trap_byte = 8'hB1;  // OR C
+            7'h07: trap_byte = 8'hC8;  // RET Z            ; the tape's end (NC)
+            7'h08: trap_byte = 8'hDB;  // IN A,($5B)       ; the block's flag
+            7'h09: trap_byte = 8'h5B;
+            7'h0A: trap_byte = 8'h0B;  // DEC BC
+            7'h0B: trap_byte = 8'h6F;  // LD L,A
+            7'h0C: trap_byte = 8'h08;  // EX AF,AF'
+            7'h0D: trap_byte = 8'h67;  // LD H,A           ; wanted flag, and the xor's seed
+            7'h0E: trap_byte = 8'h9F;  // SBC A,A          ; FF load, 00 verify
+            7'h0F: trap_byte = 8'h08;  // EX AF,AF'
+            7'h10: trap_byte = 8'h7C;  // LD A,H
+            7'h11: trap_byte = 8'hBD;  // CP L
+            7'h12: trap_byte = 8'h20;  // JR NZ,skip
+            7'h13: trap_byte = 8'h3A;
+            7'h14: trap_byte = 8'h08;  // EX AF,AF'
+            7'h15: trap_byte = 8'hB7;  // OR A
+            7'h16: trap_byte = 8'h28;  // JR Z,verify
+            7'h17: trap_byte = 8'h14;
+            // load: DE bytes to (IX+)
+            7'h18: trap_byte = 8'h7A;  // LD A,D
+            7'h19: trap_byte = 8'hB3;  // OR E
+            7'h1A: trap_byte = 8'h28;  // JR Z,done
+            7'h1B: trap_byte = 8'h28;
+            7'h1C: trap_byte = 8'h78;  // LD A,B
+            7'h1D: trap_byte = 8'hB1;  // OR C
+            7'h1E: trap_byte = 8'hC8;  // RET Z            ; block too short (NC)
+            7'h1F: trap_byte = 8'hDB;  // IN A,($5B)
+            7'h20: trap_byte = 8'h5B;
+            7'h21: trap_byte = 8'h0B;  // DEC BC
+            7'h22: trap_byte = 8'hDD;  // LD (IX+0),A
+            7'h23: trap_byte = 8'h77;
+            7'h24: trap_byte = 8'h00;
+            7'h25: trap_byte = 8'hAC;  // XOR H
+            7'h26: trap_byte = 8'h67;  // LD H,A
+            7'h27: trap_byte = 8'hDD;  // INC IX
+            7'h28: trap_byte = 8'h23;
+            7'h29: trap_byte = 8'h1B;  // DEC DE
+            7'h2A: trap_byte = 8'h18;  // JR load
+            7'h2B: trap_byte = 8'hEC;
+            // verify: DE bytes against (IX+)
+            7'h2C: trap_byte = 8'h7A;  // LD A,D
+            7'h2D: trap_byte = 8'hB3;  // OR E
+            7'h2E: trap_byte = 8'h28;  // JR Z,done
+            7'h2F: trap_byte = 8'h14;
+            7'h30: trap_byte = 8'h78;  // LD A,B
+            7'h31: trap_byte = 8'hB1;  // OR C
+            7'h32: trap_byte = 8'hC8;  // RET Z
+            7'h33: trap_byte = 8'hDB;  // IN A,($5B)
+            7'h34: trap_byte = 8'h5B;
+            7'h35: trap_byte = 8'h0B;  // DEC BC
+            7'h36: trap_byte = 8'h6F;  // LD L,A
+            7'h37: trap_byte = 8'hAC;  // XOR H
+            7'h38: trap_byte = 8'h67;  // LD H,A
+            7'h39: trap_byte = 8'hDD;  // LD A,(IX+0)
+            7'h3A: trap_byte = 8'h7E;
+            7'h3B: trap_byte = 8'h00;
+            7'h3C: trap_byte = 8'hBD;  // CP L
+            7'h3D: trap_byte = 8'h20;  // JR NZ,skip
+            7'h3E: trap_byte = 8'h0F;
+            7'h3F: trap_byte = 8'hDD;  // INC IX
+            7'h40: trap_byte = 8'h23;
+            7'h41: trap_byte = 8'h1B;  // DEC DE
+            7'h42: trap_byte = 8'h18;  // JR verify
+            7'h43: trap_byte = 8'hE8;
+            // done: the checksum byte
+            7'h44: trap_byte = 8'h78;  // LD A,B
+            7'h45: trap_byte = 8'hB1;  // OR C
+            7'h46: trap_byte = 8'hC8;  // RET Z            ; no checksum (NC)
+            7'h47: trap_byte = 8'hDB;  // IN A,($5B)
+            7'h48: trap_byte = 8'h5B;
+            7'h49: trap_byte = 8'h0B;  // DEC BC
+            7'h4A: trap_byte = 8'hAC;  // XOR H
+            7'h4B: trap_byte = 8'h67;  // LD H,A           ; 0 when the parity is good
+            7'h4C: trap_byte = 8'h18;  // JR drain
+            7'h4D: trap_byte = 8'h02;
+            // skip: fail, once the block is read out
+            7'h4E: trap_byte = 8'h26;  // LD H,$FF
+            7'h4F: trap_byte = 8'hFF;
+            // drain: the rest of the block
+            7'h50: trap_byte = 8'h78;  // LD A,B
+            7'h51: trap_byte = 8'hB1;  // OR C
+            7'h52: trap_byte = 8'h28;  // JR Z,fin
+            7'h53: trap_byte = 8'h05;
+            7'h54: trap_byte = 8'hDB;  // IN A,($5B)
+            7'h55: trap_byte = 8'h5B;
+            7'h56: trap_byte = 8'h0B;  // DEC BC
+            7'h57: trap_byte = 8'h18;  // JR drain
+            7'h58: trap_byte = 8'hF7;
+            // fin: CF = (H == 0), as the ROM ends LD-BYTES
+            7'h59: trap_byte = 8'h7C;  // LD A,H
+            7'h5A: trap_byte = 8'hFE;  // CP $01
+            7'h5B: trap_byte = 8'h01;
+            7'h5C: trap_byte = 8'hC9;  // RET
+            default: trap_byte = 8'hC9;  // RET
         endcase
     endfunction
 
-    wire in_trap_range = (a >= 16'h0556) && (a <= 16'h0572);
-    wire [4:0] trap_offset = a[4:0] - 5'h16; // 0x556 & 0x1F = 0x16
+    wire [15:0] trap_off = a - 16'h0562;
+    wire        in_trap  = instant_active && (trap_off < 16'd93);
 
-    wire [7:0] effective_rom_q = (instant_active && in_trap_range) ?
-                                 trap_rom_byte(trap_offset) : rom_q;
+    wire [7:0] effective_rom_q = in_trap ? trap_byte(trap_off[6:0]) : rom_q;
 
     assign mem_dout = (snap_boot_active && a < 16'd64) ? snap_boot_dout :
                       is_rom ? effective_rom_q : ram_q;
@@ -314,12 +394,16 @@ module zx_core #(
     wire io_wr  = iorq && intcycle_n &&  write && ce && ts[2];
     wire ula    = !a[0];
 
+    // one pop per IN A,($5B), as its I/O cycle ends: ts[2] repeats through
+    // tv80's I/O wait state and through a wait_n stall, so it cannot count
+    wire io5b = io_rd && port5b && instant_active;
+    reg  io5b_q = 1'b0;
     always @(posedge clk) begin
-        if (reset) inst_pop <= 1'b0;
-        else       inst_pop <= io_rd && port5b && ce && ts[2];
+        io5b_q   <= io5b && !reset;
+        inst_pop <= io5b_q && !io5b && !reset;
     end
 
-    wire [7:0] io_dout = (io_rd && port5b) ? inst_byte :
+    wire [7:0] io_dout = io5b ? inst_byte :
                          (io_rd && ula) ? {1'b1, ear, 1'b1, ~keys_c} : 8'hFF;   // EAR is bit 6: LD-SAMPLE does RRA, AND $20
 
     // ------------------------------------------------------------------

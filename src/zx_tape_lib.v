@@ -235,17 +235,20 @@ module zx_tape_lib (
     wire       tap_sector_done;
     reg  [7:0] rd_hold = 8'h00;
 
+    wire       tap_eof = (img_len != 24'd0) && (rd_count >= img_len);
+
     assign store_clear  = sel_pending | eject_pulse;
     assign store_rewind = rewind_pulse;
     assign rd_pop       = (tap_rd_req | inst_pop) && !rd_empty;
-    assign inst_byte     = rd_byte;
-    assign inst_rd_empty = rd_empty;
+    // the trap reads the store directly; past the image's end it reads 00
+    // without waiting, which it takes as a zero block length (the tape's end)
+    assign inst_byte     = tap_eof ? 8'h00 : rd_byte;
+    assign inst_rd_empty = rd_empty && !tap_eof;
     assign card_ok      = fs_ok;
     assign busy         = sd_busy | sd_loading;
 
     // past the image's last byte the player is asking for the next block's
     // length: a .TAP has no end marker, so answer 00 00 (its end of file)
-    wire tap_eof = (img_len != 24'd0) && (rd_count >= img_len);
     always @(posedge clk) begin
         if (tap_rd_req && tap_eof)        rd_hold <= 8'h00;
         else if (tap_rd_req && !rd_empty) rd_hold <= rd_byte;
@@ -312,6 +315,7 @@ module zx_tape_lib (
         if (reset) begin
             state        <= S_EMPTY;
             state_q      <= S_EMPTY;
+            instant_active <= 1'b0;
             sel_pending  <= 1'b0;
             boot_open    <= 1'b1;
             boot_cnt     <= 16'd0;
@@ -382,23 +386,27 @@ module zx_tape_lib (
                 (sd_err && (state == S_LOAD || sel_pending))) begin
                 state   <= S_ERR;
                 img_len <= 24'd0;
+                instant_active <= 1'b0;     // or the trap waits on an empty store
             end
 
-            if (cmd_instant) begin
+            // ---- instant: zx_core's trap reads the store from the start, the
+            // player stays stopped.  Still loading is fine, the trap waits for
+            // the bytes.  Play, rewind, a new tape or eject disarm it; Play
+            // hands the player the head where the trap left it.
+            if (cmd_instant && state != S_EMPTY && state != S_ERR) begin
                 instant_active <= 1'b1;
-                if (state == S_READY) begin
-                    if (started) begin
-                        rewind_pulse  <= 1'b1;
-                        start_pending <= 1'b1;
-                    end else begin
-                        started       <= 1'b1;
-                    end
-                    state <= S_PLAY;
+                if (state != S_LOAD) begin
+                    rewind_pulse <= 1'b1;
+                    started      <= 1'b0;
+                    state        <= S_PLAY;
                 end
             end
+            if (cmd_play || cmd_rewind || cmd_select || cmd_eject)
+                instant_active <= 1'b0;
+            if (instant_active && state == S_PLAY && tap_eof && !rewind_pulse) state <= S_END;
+            if (cmd_play && instant_active && state == S_PLAY) state <= S_READY;
 
             if (cmd_eject) begin
-                instant_active <= 1'b0;
                 eject_pulse <= 1'b1;
                 img_len <= 24'd0;
                 state   <= S_EMPTY;
@@ -406,10 +414,10 @@ module zx_tape_lib (
             end
 
             // ---- the whole image is in DDR3: hold it for LOAD ""
-            if (state == S_LOAD && img_ready) state <= S_READY;
+            if (state == S_LOAD && img_ready) state <= instant_active ? S_PLAY : S_READY;
 
             // ---- play: the ROM's LD-BYTES, DIP5, or the page's button
-            if (state == S_READY && (tape_load || auto_play || cmd_play)) begin
+            if (state == S_READY && !instant_active && (tape_load || auto_play || cmd_play)) begin
                 // the head is already at the start after a load; a restart
                 // rewinds it first and starts one clock later
                 if (started) begin
@@ -422,10 +430,10 @@ module zx_tape_lib (
                 state <= S_PLAY;
             end
             // ---- pause holds, play or pause again resumes
-            if (cmd_pause && state == S_PLAY)  state <= S_PAUSE;
+            if (cmd_pause && state == S_PLAY && !instant_active) state <= S_PAUSE;
             // ...and so does the ROM's next LOAD (Stop on the page is this
             // hold): a multi-load game's next part runs on from the head
-            if ((cmd_pause || cmd_play || tape_load) && state == S_PAUSE) state <= S_PLAY;
+            if ((cmd_pause || cmd_play || (tape_load && !instant_active)) && state == S_PAUSE) state <= S_PLAY;
 
             // ---- rewind: head to the start, stopped, waiting for LOAD "" or play
             if (cmd_rewind && (state == S_READY || state == S_PLAY ||

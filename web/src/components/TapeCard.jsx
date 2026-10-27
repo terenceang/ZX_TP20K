@@ -205,8 +205,8 @@ export default function TapeCard({
             <button
               className="tp instant"
               onClick={onInstantLoad}
-              disabled={!connected || (state !== DECK.READY && state !== DECK.PLAYING && state !== DECK.ENDED)}
-              title="Load tape into memory instantly"
+              disabled={!connected || !entry || !/\.(tap|tzx)$/i.test(entry.name)}
+              title="Run the tape in the page and load the result as a snapshot"
             >
               <span className="tp-icon" aria-hidden="true">&#9889;</span> Instant
             </button>

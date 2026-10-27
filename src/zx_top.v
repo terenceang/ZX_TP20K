@@ -402,6 +402,10 @@ module zx_top (
     assign ddr_we    = 1'b0;
     assign ddr_be    = 2'b11;
     assign ddr_wdata = 16'd0;
+    // the trap reads the library's store: no library, no trap
+    assign instant_active = 1'b0;
+    assign inst_byte      = 8'h00;
+    assign inst_rd_empty  = 1'b1;
 `endif
 
     // ------------------------------------------------------------------

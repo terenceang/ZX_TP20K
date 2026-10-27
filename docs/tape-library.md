@@ -42,6 +42,7 @@ from the computer, because the deck plays what is in it.
 | page → board | `FB 53 <idx>` | load tape *idx* into DDR3 |
 | page → board | `FB 43` | eject |
 | page → board | `FB 50` | play now, without waiting for `LOAD ""` |
+| page → board | `FB 49` | arm the instant-load trap on the player's `.TAP` (rewinds it; see *Instant load*) |
 | page → board | `FB 41` / `FB 61` | tape audio to HDMI on / off (the deck's speaker button; the page remembers it and resends it on connect) |
 | page → board | `FB 57`, then `FD <byte>`…, then `FB 45` | upload a tape into the player |
 | board → page | `F7 <len> <name…> <size le32>` | one library entry |
@@ -77,6 +78,46 @@ as the entries arrive.
   requires `ZX_USE_DDR3`.  That build takes the DDR3 pins and the UART's
   `tx_req`; `DIP5` and the page's Play both start the tape, and the ROM's own
   `LOAD ""` (`tape_load`, fetch of `0x0556`) does too.
+
+## Instant load
+
+Two halves, picked per tape by the page.
+
+**The page runs the tape first.**  The deck's **Instant** button reads the
+`.TAP`/`.TZX` off the card and runs it through a 48K of its own
+(`web/src/tape-snapshot.js`: `z80-emulator` and the real ROM, bundled from
+`roms/zx48.rom` when `make rom` has fetched it).  The emulated ROM gets
+`LOAD ""` through `LASTK`; standard-speed blocks are flash-loaded at
+`LD-BYTES`, every other block plays as EAR edges with its TZX timings, so
+turbo and custom loaders load too, in a fraction of real time.  It stops 2 s
+(emulated) after the tape runs out or meets a TZX stop block.
+
+**Then one of two paths:**
+
+* **Snapshot** -- single loads, custom loaders, TZX: the machine the tape left
+  behind goes in through the snapshot packets (`FC`, `src/zx_snap.v`), like a
+  `.Z80` off the card.
+* **Trap** -- a `.TAP` in the player that loads through the ROM but has data
+  blocks the ROM never asked for (a multi-load game's later parts): the
+  machine as the ROM first entered `LD-BYTES` goes in, with `FB 49` sent while
+  the CPU is held.  That arms `zx_core`'s trap, DivMMC style: from `0x0562`
+  (where the ROM has put the flag and LOAD/VERIFY in AF', done `DI` and pushed
+  `SA/LD-RET`) `LD-BYTES` reads as a 93-byte routine taking the `.TAP` from
+  port `0x5B`, the DDR3 store's head, the CPU held on `wait_n` while it is
+  empty.  It checks the flag and the parity and reads a rejected or over-long
+  block to its end, so the next call starts on the next block, and past the
+  image the port reads `00` (a zero length: the ROM keeps looking until
+  BREAK).  The player stays stopped; the deck shows *playing* while the trap
+  reads and *ended* at the image's end.  Play (from where the trap left the
+  head), rewind, select and eject disarm it.
+
+Custom loaders are found by watching the port: a block played as edges while
+the program read the EAR at least once per edge.  A "press any key" loop
+polling while the tape rolls on looks the same, which only costs a
+multi-load the trap path.  `web/test/tape-snapshot.test.js` converts
+`sim/data/hello_tap.hex` as TAP, as TZX standard blocks, as TZX turbo blocks
+(the edge path: *custom*) and with parts left over (a multi-load);
+`sim/tb_type.v +instant=1` loads it through the trap and the real ROM.
 
 ## Uploading without the card
 

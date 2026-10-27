@@ -17,7 +17,14 @@
 //       letter finger before the shift finger)
 //    3  human style: SYMBOL SHIFT held across both quotes, P tapped twice
 //
+//  +instant=1 arms the instant-load trap (LD-BYTES from 0x0562 reads port
+//  0x5B) with sim/data/hello_tap.hex behind the port -- the store modelled
+//  with a refill stall after every byte, so the trap's IN waits: LOAD ""
+//  must take the header and the program through the ROM's own LOAD code,
+//  consume the tape exactly, and the autostarted program must run (BORDER 2).
+//
 //  plusargs: +variant=1..3  +fast=0|1|2 (CPU speed, default 2)  +quiet=1
+//            +instant=1
 // ============================================================================
 `timescale 1ns / 1ps
 `default_nettype none
@@ -64,10 +71,32 @@ module tb_type;
     wire halt_n, flash, key_hit, frame_tick, audio_valid, tape_load;
     wire [15:0] audio_l, audio_r;
 
+    // ---- instant load: zx_tape_lib's store, as the trap sees it -----------
+    integer instant = 0;
+    initial if (!$value$plusargs("instant=%d", instant)) instant = 0;
+    localparam integer TAP_N = 66;
+    reg [7:0] tape [0:TAP_N-1];
+    initial $readmemh("sim/data/hello_tap.hex", tape);
+    integer   tp = 0;
+    reg [3:0] stall = 4'd0;
+    wire      inst_pop;
+    wire      tap_end    = (tp >= TAP_N);
+    wire [7:0] inst_byte = tap_end ? 8'h00 : tape[tp];
+    wire      inst_empty = !tap_end && (stall != 4'd0);
+    always @(posedge clk) begin
+        if (stall != 4'd0) stall <= stall - 4'd1;
+        if (inst_pop) begin
+            tp    <= tp + 1;
+            stall <= 4'd12;         // the store refilling: the next IN waits
+        end
+    end
+
     zx_core u_core (
         .clk(clk), .reset(rst), .ce_cpu(ce_cpu), .ce_48k(1'b0),
         .uart_rx(uart_rx), .key_hit(key_hit), .ear(1'b1),
         .tape_load(tape_load),
+        .instant_active(instant != 0), .inst_pop(inst_pop),
+        .inst_byte(inst_byte), .inst_rd_empty(inst_empty),
         .vid_x(px), .vid_y(py), .vid_rgb(rgb), .flash(flash),
         .audio_valid(audio_valid), .audio_l(audio_l), .audio_r(audio_r),
         .halt_n(halt_n), .frame_tick(frame_tick)
@@ -297,6 +326,26 @@ module tb_type;
             errors = errors + 1;
         end
 
+        if (instant != 0) begin : inst_chk
+            integer prog, k, bad;
+            prog = u_core.ram[16'h5C53 - 16'h4000] | (u_core.ram[16'h5C54 - 16'h4000] << 8);
+            bad = 0;
+            for (k = 0; k < 41; k = k + 1)          // the data block's 41 bytes
+                if (u_core.ram[prog - 16'h4000 + k] !== tape[24 + k]) bad = bad + 1;
+            if (bad != 0) begin
+                $display("FAIL: instant: %0d of 41 program bytes wrong at PROG=%04x", bad, prog);
+                errors = errors + 1;
+            end else if (!quiet) $display("ok: instant: the program is at PROG=%04x", prog);
+            if (tp != TAP_N) begin
+                $display("FAIL: instant: %0d of %0d tape bytes read", tp, TAP_N);
+                errors = errors + 1;
+            end
+            if (u_core.border !== 3'd2) begin
+                $display("FAIL: instant: border %0d, the program's BORDER 2 did not run", u_core.border);
+                errors = errors + 1;
+            end
+        end
+
         // the whole 48K for manual inspection
         fd = $fopen("build/type_ram.hex", "w");
         if (fd != 0) begin
@@ -304,7 +353,8 @@ module tb_type;
             $fclose(fd);
         end
 
-        if (errors == 0) $display("PASS: variant %0d types LOAD \"\" and runs it", variant);
+        if (errors == 0) $display("PASS: variant %0d types LOAD \"\" and runs it%0s", variant,
+                                 instant ? " (instant-load trap: program loaded and autostarted)" : "");
         else $display("FAIL: variant %0d: %0d errors", variant, errors);
         $finish;
     end
