@@ -128,6 +128,7 @@ module zx_top (
 
     // the page's tape-library commands, out of zx_input (inside zx_core)
     wire        lib_list, lib_sel, lib_eject, lib_play, lib_pause, lib_rewind, cmd_instant, cmd_version;
+    wire [23:0] inst_off;
     wire [4:0]  lib_idx;
     wire        instant_active, inst_pop, inst_rd_empty;
     wire [7:0]  inst_byte;
@@ -160,7 +161,7 @@ module zx_top (
         .cmd_list(lib_list), .cmd_select(lib_sel), .cmd_idx(lib_idx),
         .cmd_eject(lib_eject), .cmd_play(lib_play),
         .cmd_pause(lib_pause), .cmd_rewind(lib_rewind),
-        .cmd_instant(cmd_instant), .cmd_version(cmd_version), .inst_pop(inst_pop),
+        .cmd_instant(cmd_instant), .inst_off(inst_off), .cmd_version(cmd_version), .inst_pop(inst_pop),
         .inst_byte(inst_byte), .inst_rd_empty(inst_rd_empty), .instant_active(instant_active),
         .sd_miso(sd_miso), .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_cs_n(sd_cs_n),
         .store_clear(store_clear), .store_rewind(store_rewind),
@@ -235,7 +236,7 @@ module zx_top (
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play),
         .lib_pause(lib_pause), .lib_rewind(lib_rewind),
-        .cmd_instant(cmd_instant),
+        .cmd_instant(cmd_instant), .inst_off(inst_off),
         .cmd_version(cmd_version),
         .instant_active(instant_active),
         .inst_pop(inst_pop),

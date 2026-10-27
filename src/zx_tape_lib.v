@@ -43,6 +43,7 @@ module zx_tape_lib (
 
     // instant load commands and data interface
     input  wire        cmd_instant,
+    input  wire [23:0] inst_off,             // where the trap starts reading
     input  wire        cmd_version,
     input  wire        inst_pop,
     output wire [7:0]  inst_byte,
@@ -239,11 +240,15 @@ module zx_tape_lib (
 
     assign store_clear  = sel_pending | eject_pulse;
     assign store_rewind = rewind_pulse;
-    assign rd_pop       = (tap_rd_req | inst_pop) && !rd_empty;
+    // arming at an offset: the store is rewound, then this many bytes popped
+    // unread (the store sees the rewind while rewind_pulse is high)
+    reg  [23:0] skip_left = 24'd0;
+    wire        skip_pop  = (skip_left != 24'd0) && !rewind_pulse;
+    assign rd_pop       = (tap_rd_req | inst_pop | skip_pop) && !rd_empty;
     // the trap reads the store directly; past the image's end it reads 00
     // without waiting, which it takes as a zero block length (the tape's end)
     assign inst_byte     = tap_eof ? 8'h00 : rd_byte;
-    assign inst_rd_empty = rd_empty && !tap_eof;
+    assign inst_rd_empty = (rd_empty || skip_left != 24'd0) && !tap_eof;
     assign card_ok      = fs_ok;
     assign busy         = sd_busy | sd_loading;
 
@@ -316,6 +321,7 @@ module zx_tape_lib (
             state        <= S_EMPTY;
             state_q      <= S_EMPTY;
             instant_active <= 1'b0;
+            skip_left    <= 24'd0;
             sel_pending  <= 1'b0;
             boot_open    <= 1'b1;
             boot_cnt     <= 16'd0;
@@ -389,22 +395,27 @@ module zx_tape_lib (
                 instant_active <= 1'b0;     // or the trap waits on an empty store
             end
 
-            // ---- instant: zx_core's trap reads the store from the start, the
-            // player stays stopped.  Still loading is fine, the trap waits for
-            // the bytes.  Play, rewind, a new tape or eject disarm it; Play
-            // hands the player the head where the trap left it.
+            // ---- instant: the page has run the tape up to inst_off (the first
+            // part its program did not take) and injected the machine; the
+            // head goes there and zx_core's trap serves the ROM's next loads.
+            // The player stays stopped -- Play starts it from the head (a
+            // custom loader's next part), and Play, rewind, a new tape or
+            // eject disarm the trap.  Still loading is fine: the skip and the
+            // trap wait for the bytes.
+            // (rd_count is the old head's until the rewind has landed)
+            if (skip_pop && !rd_empty) skip_left <= skip_left - 24'd1;
+            if (tap_eof && !rewind_pulse) skip_left <= 24'd0;
             if (cmd_instant && state != S_EMPTY && state != S_ERR) begin
                 instant_active <= 1'b1;
-                if (state != S_LOAD) begin
-                    rewind_pulse <= 1'b1;
-                    started      <= 1'b0;
-                    state        <= S_PLAY;
-                end
+                rewind_pulse   <= 1'b1;
+                skip_left      <= inst_off;
+                started        <= 1'b0;
+                if (state != S_LOAD) state <= S_READY;
             end
-            if (cmd_play || cmd_rewind || cmd_select || cmd_eject)
+            if (cmd_play || cmd_rewind || cmd_select || cmd_eject) begin
                 instant_active <= 1'b0;
-            if (instant_active && state == S_PLAY && tap_eof && !rewind_pulse) state <= S_END;
-            if (cmd_play && instant_active && state == S_PLAY) state <= S_READY;
+                skip_left      <= 24'd0;
+            end
 
             if (cmd_eject) begin
                 eject_pulse <= 1'b1;
@@ -414,10 +425,10 @@ module zx_tape_lib (
             end
 
             // ---- the whole image is in DDR3: hold it for LOAD ""
-            if (state == S_LOAD && img_ready) state <= instant_active ? S_PLAY : S_READY;
+            if (state == S_LOAD && img_ready) state <= S_READY;
 
             // ---- play: the ROM's LD-BYTES, DIP5, or the page's button
-            if (state == S_READY && !instant_active && (tape_load || auto_play || cmd_play)) begin
+            if (state == S_READY && (cmd_play || (!instant_active && (tape_load || auto_play)))) begin
                 // the head is already at the start after a load; a restart
                 // rewinds it first and starts one clock later
                 if (started) begin
@@ -430,10 +441,10 @@ module zx_tape_lib (
                 state <= S_PLAY;
             end
             // ---- pause holds, play or pause again resumes
-            if (cmd_pause && state == S_PLAY && !instant_active) state <= S_PAUSE;
+            if (cmd_pause && state == S_PLAY)  state <= S_PAUSE;
             // ...and so does the ROM's next LOAD (Stop on the page is this
             // hold): a multi-load game's next part runs on from the head
-            if ((cmd_pause || cmd_play || (tape_load && !instant_active)) && state == S_PAUSE) state <= S_PLAY;
+            if ((cmd_pause || cmd_play || tape_load) && state == S_PAUSE) state <= S_PLAY;
 
             // ---- rewind: head to the start, stopped, waiting for LOAD "" or play
             if (cmd_rewind && (state == S_READY || state == S_PLAY ||

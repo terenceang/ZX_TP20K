@@ -143,9 +143,12 @@ export function encodeTapeAudio(on) {
   return Uint8Array.from([LIB_CMD, on ? LIB.AUDIO_ON : LIB.AUDIO_OFF])
 }
 
-/** Arm the instant-load trap on the player's .TAP: LD-BYTES reads DDR3 from its start. */
-export function encodeInstantLoad() {
-  return Uint8Array.from([LIB_CMD, LIB.INSTANT])
+/**
+ * Instant load's hand-over: put the player's head at byte `offset` of its
+ * .TAP and arm the trap there, so the ROM's next loads read DDR3 (le24).
+ */
+export function encodeInstantLoad(offset) {
+  return Uint8Array.from([LIB_CMD, LIB.INSTANT, offset & 0xff, (offset >> 8) & 0xff, (offset >> 16) & 0xff])
 }
 
 /** Ask the board for its firmware/bitstream version. */

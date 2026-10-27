@@ -337,12 +337,11 @@ export default function App() {
   }, [send])
 
   // Instant load: the deck's tape is run through a 48K in the page
-  // (tape-snapshot.js), then one of two paths:
-  //  * a multi-load that loads through the ROM, with that .TAP in the board's
-  //    player: the machine as it entered LD-BYTES goes in with the board's
-  //    trap armed, so this load and every later part come off DDR3;
-  //  * anything else (single loads, custom loaders, TZX): the machine the
-  //    tape left behind goes in as a snapshot.
+  // (tape-snapshot.js) until its program stops taking it, and that machine
+  // goes in as a snapshot.  With the same .TAP in the board's player, the
+  // head is left where the page stopped: at the next part with the trap
+  // armed (a ROM load of it comes off DDR3, a custom loader's needs Play),
+  // or rewound when nothing is left.
   const onInstantLoad = useCallback(async () => {
     if (demo.current) return
     const entry = lib.current.deckEntry
@@ -357,11 +356,9 @@ export default function App() {
       const l = lib.current
       const inPlayer = /\.tap$/i.test(entry.name) && l.loaded >= 0 &&
         l.entries[l.loaded]?.name === entry.name && l.state !== DECK.ERROR
-      if (!snap.custom && snap.unloaded > 0 && snap.entry && inPlayer) {
-        await injectSnapshot(snap.entry, encodeInstantLoad())
-      } else {
-        await injectSnapshot(snap)
-      }
+      const handOver = !inPlayer ? null
+        : snap.resume ? encodeInstantLoad(snap.resume.offset) : encodeRewindTape()
+      await injectSnapshot(snap, handOver)
     } catch (err) {
       console.error('Instant load failed:', err)
       alert(`Instant load failed: ${err.message}`)

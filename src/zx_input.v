@@ -45,7 +45,8 @@ module zx_input (
     output reg         lib_play,     // 'P'
     output reg         lib_pause,    // 'H'  hold: pause / resume
     output reg         lib_rewind,   // 'R'  back to the start, stopped
-    output reg         cmd_instant,  // 'I'  instant load
+    output reg         cmd_instant,  // 'I'  <off le24>: arm the trap at that byte
+    output reg  [23:0] inst_off = 24'd0,
     output reg         cmd_version,  // 'V'  query version
     output reg         tape_mon = 1'b0, // 'A' on / 'a' off: tape audio to HDMI
 
@@ -123,9 +124,11 @@ module zx_input (
     // Parser states.  PK_KEY_POS expects the FE packet's position byte,
     // PK_KEY_DOWN its down byte, PK_FF the FF packet's kind byte.
     localparam [2:0] PK_NONE = 3'd0, PK_KEY_POS = 3'd1, PK_KEY_DOWN = 3'd2,
-                     PK_FF = 3'd3, PK_LIB = 3'd4, PK_LIB_IDX = 3'd5;
+                     PK_FF = 3'd3, PK_LIB = 3'd4, PK_LIB_IDX = 3'd5,
+                     PK_INST = 3'd6;
 
     reg [2:0]  pk        = PK_NONE;
+    reg [1:0]  inst_n    = 2'd0;     // offset bytes still to come
     reg        have_pos  = 1'b0;
     reg [5:0]  pos_q     = 6'd0;
     reg [39:0] web_matrix = 40'd0;   // latched web keys
@@ -199,11 +202,19 @@ module zx_input (
                             8'h50: lib_play    <= 1'b1;
                             8'h48: lib_pause   <= 1'b1;   // 'H'
                             8'h52: lib_rewind  <= 1'b1;   // 'R'
-                            8'h49: cmd_instant <= 1'b1;   // 'I'
+                            8'h49: begin pk <= PK_INST; inst_n <= 2'd2; end   // 'I'
                             8'h56: cmd_version <= 1'b1;   // 'V'
                             default: ;
                         endcase
-                        if (rx_byte != 8'h53) pk <= PK_NONE;
+                        if (rx_byte != 8'h53 && rx_byte != 8'h49) pk <= PK_NONE;
+                    end
+                    PK_INST: begin               // low byte first
+                        inst_off <= {rx_byte, inst_off[23:8]};
+                        inst_n   <= inst_n - 2'd1;
+                        if (inst_n == 2'd0) begin
+                            cmd_instant <= 1'b1;
+                            pk          <= PK_NONE;
+                        end
                     end
                     PK_LIB_IDX: begin
                         lib_idx <= rx_byte[4:0];

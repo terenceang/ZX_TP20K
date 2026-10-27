@@ -1,7 +1,7 @@
 // Tests for the wire protocol and the key maps, plain node --test.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { encodeKey, encodeAllUp, KEY_HDR, CMD_HDR, ALL_UP, HANDSHAKE } from '../src/protocol.js'
+import { encodeKey, encodeAllUp, encodeInstantLoad, KEY_HDR, CMD_HDR, ALL_UP, HANDSHAKE } from '../src/protocol.js'
 import { KEYS, pos, eventToChord, charToChord } from '../src/zxkeys.js'
 
 test('the key set is the 40-key matrix, no duplicate positions', () => {
@@ -49,4 +49,8 @@ test('paste characters map to the red legends', () => {
 
 test('the handshake is what zx_uart_tx.v prints', () => {
   assert.match('[ ZX Spectrum 20K ]', new RegExp(HANDSHAKE))
+})
+
+test('instant hand-over is FB 49 and the offset, le24 (src/zx_input.v PK_INST)', () => {
+  assert.deepEqual([...encodeInstantLoad(0x010042)], [0xfb, 0x49, 0x42, 0x00, 0x01])
 })

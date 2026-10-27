@@ -21,6 +21,11 @@ module tb_input;
     reg reset = 1'b1;
     reg uart_rx = 1'b1;
     reg hold = 1'b0;
+    wire        cmd_instant;
+    wire [23:0] inst_off;
+    reg         saw_inst = 1'b0;
+    reg  [23:0] saw_off = 24'd0;
+    always @(posedge clk) if (cmd_instant) begin saw_inst <= 1'b1; saw_off <= inst_off; end
     reg [39:0] keys_before;
 
     wire [39:0] vk_matrix;
@@ -33,6 +38,7 @@ module tb_input;
         .clk(clk), .reset(reset), .uart_rx(uart_rx),
         .vk_matrix(vk_matrix), .key_hit(key_hit),
         .card_mode(1'b0), .hold(hold),
+        .cmd_instant(cmd_instant), .inst_off(inst_off),
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play),
         .tape_mon(tape_mon)
@@ -157,6 +163,20 @@ module tb_input;
         send_byte(8'hFB); send_byte(8'h61); settle;
         if (tape_mon !== 1'b0) begin $display("FAIL: FB 61 tape audio off"); errors = errors + 1; end
         else if (!quiet) $display("ok: FB 41/61 tape audio");
+
+        // instant: FB 49 and a 24-bit offset, low byte first; a select's
+        // index or a key packet after it is parsed normally again
+        lib_clear;
+        send_byte(8'hFB); send_byte(8'h49);
+        send_byte(8'h42); send_byte(8'h00); settle;
+        if (saw_inst) begin $display("FAIL: FB 49 fired before its offset"); errors = errors + 1; end
+        send_byte(8'h01); settle;
+        if (!saw_inst || saw_off !== 24'h010042) begin
+            $display("FAIL: FB 49 42 00 01 should arm at 0x010042 (got %b %06x)", saw_inst, saw_off);
+            errors = errors + 1;
+        end else if (!quiet) $display("ok: FB 49 <off> instant at 0x%06x", saw_off);
+        send_byte(8'hFB); send_byte(8'h53); send_byte(8'd4); settle;
+        if (!saw_sel || saw_idx != 5'd4) begin $display("FAIL: parser lost after FB 49"); errors = errors + 1; end
 
         // held (zx_snap inside a packet): snapshot bytes that look like
         // commands -- a key, a select, an eject -- must do nothing

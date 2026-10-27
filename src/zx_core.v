@@ -56,6 +56,7 @@ module zx_core #(
     output wire        lib_pause,
     output wire        lib_rewind,
     output wire        cmd_instant,
+    output wire [23:0] inst_off,
     output wire        cmd_version,
 
     // instant load interface from zx_tape_lib
@@ -227,8 +228,8 @@ module zx_core #(
     // files as on a real tape.  Past the end the port reads 00 00 as the
     // length: NC, and the ROM keeps looking until BREAK.
     // ponytail: ROM loads only -- a custom loader that jumps into the middle
-    // of LD-BYTES lands in this routine.  The page only arms it for tapes it
-    // has seen load through the ROM (web/src/tape-snapshot.js).
+    // of LD-BYTES lands in this routine.  The page arms it at the part of
+    // the .TAP its own run stopped at (web/src/tape-snapshot.js).
     // ------------------------------------------------------------------
     function [7:0] trap_byte(input [6:0] off);
         case (off)
@@ -377,7 +378,7 @@ module zx_core #(
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play),
         .lib_pause(lib_pause), .lib_rewind(lib_rewind),
-        .cmd_instant(cmd_instant),
+        .cmd_instant(cmd_instant), .inst_off(inst_off),
         .cmd_version(cmd_version),
         .tape_mon(tape_mon),
         .scr_req(scr_cap_req),
