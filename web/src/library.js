@@ -3,9 +3,9 @@
 //
 //  The library is the SD card's, not the page's: the board scans the card's
 //  root directory for .TAP files at power-on and sends the list down the same
-//  UART as the keyboard (src/zx_tape_lib.v).  The page can only ask for one of
-//  those entries -- there is no way to push a file from the computer, which is
-//  the point: the cassette deck has a tape in it or it does not.
+//  UART as the keyboard (src/zx_tape_lib.v).  The page asks for one of those
+//  entries by position; files reach the card through the page's raw-card
+//  FAT32 (fat32.js), never straight into the player.
 //
 //  Byte stream from the board (see protocol.js):
 //
@@ -146,7 +146,7 @@ export class BoardFrames {
           if (this.size.length === 4) {
             this.on({
               type: 'entry',
-              name: new TextDecoder().decode(Uint8Array.from(this.name)),
+              name: tapeName(new TextDecoder().decode(Uint8Array.from(this.name))),
               size: le32(this.size, 0),
             })
             this.st = S.IDLE
@@ -205,9 +205,15 @@ export class TapeLibrary {
     this.pos = 0           // the head's position, in bytes
     this.len = 0           // the image's size
     this.resident = 0      // bytes actually in DDR3
-    this.upload = null     // a tape the page put in the player itself
     this.card = 'waiting'  // 'waiting' | 'ok' | 'error'
     this.error = ''
+    this.listing = false   // entries are arriving: the next end marker closes the list
+    this.longNames = new Map()  // 8.3 -> long name, read from the card's LFN entries
+  }
+
+  /** The card's long name for an 8.3 entry, when the page has read one. */
+  displayName(name) {
+    return this.longNames.get(name) ?? name
   }
 
   /** Apply a BoardFrames event. */
@@ -216,10 +222,16 @@ export class TapeLibrary {
       this.entries = []
       this.card = 'waiting'
       this.selected = -1
+      this.listing = false
     } else if (ev.type === 'entry') {
+      // every listing is the whole card: the first entry after an end marker
+      // starts a fresh list, so repeated or overlapping requests never stack
+      if (!this.listing) { this.entries = []; this.listing = true }
       this.entries.push({ name: ev.name, size: ev.size })
       this.card = 'ok'
     } else if (ev.type === 'list') {
+      if (!this.listing) this.entries = []
+      this.listing = false
       this.card = 'ok'
       this.count = ev.count ?? this.entries.length
       // a selection that is no longer there, and not loaded, is dropped
@@ -229,7 +241,6 @@ export class TapeLibrary {
       this.state = ev.state
       if (ev.state === DECK.EMPTY) {
         this.loaded = -1; this.pos = 0; this.len = 0; this.resident = 0
-        this.upload = null
       }
       if (ev.state === DECK.READY) {
         // the whole image is in the player: the counter starts at the head
@@ -242,8 +253,7 @@ export class TapeLibrary {
       }
       else if (ev.state !== DECK.ERROR) this.error = ''
     } else if (ev.type === 'progress') {
-      // 0x7F is the board's marker for a tape uploaded from this page
-      this.loaded = ev.idx === 0x7f ? -2 : ev.idx
+      this.loaded = ev.idx
       this.len = ev.len || this.len
       if (this.state === DECK.LOADING) {
         // while the card is streaming, this is how much has landed in DDR3
@@ -261,6 +271,7 @@ export class TapeLibrary {
     this.entries = []
     this.card = 'waiting'
     this.selected = -1
+    this.listing = false
     return this
   }
 
@@ -275,24 +286,8 @@ export class TapeLibrary {
     return Math.max(0, Math.min(1, this.pos / this.len))
   }
 
-  /** A tape the page has just uploaded into the player. */
-  setUpload(name, size) {
-    this.upload = { name, size, uploaded: true }
-    this.loaded = -2
-    this.len = size
-    this.resident = size
-    this.pos = 0
-    return this
-  }
-
-  /** True when the player holds an upload rather than a card entry. */
-  get isUpload() {
-    return this.loaded === -2 && Boolean(this.upload)
-  }
-
   /** The row the deck shows: the loaded tape, else the one under the cursor. */
   get deckEntry() {
-    if (this.isUpload) return this.upload
     const i = this.loaded >= 0 ? this.loaded : this.selected
     return i >= 0 ? (this.entries[i] ?? null) : null
   }

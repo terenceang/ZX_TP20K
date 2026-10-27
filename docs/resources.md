@@ -73,10 +73,11 @@ and the only reason the design is not a single-clock build.
 - **Merging the POR and HDMI-reset counters** in `zx_top` would save ~10 FFs
   and one 8-bit incrementer, but it would halve the OSER10 reset delay from
   128 to 64 pixel clocks.  Not worth the risk to the serialisers for that.
-- **Compressing the ASCII key map** in `zx_input` (a 128-entry case, ~200 of
-  those 298 LUTs) into range arithmetic would save maybe 100 LUTs (0.5% of the
-  device).  The web keyboard sends key *positions*, so this table is only the
-  dumb-terminal fallback; a subtle mapping error there is worse than the LUTs.
+- **The ASCII key map** in `zx_input` (a 128-entry case, ~200 of those 298
+  LUTs) was considered for compression and then deleted outright: the board
+  now takes only `FE <pos> <down>` matrix events and the page does all
+  translation (`web/src/zxkeys.js`), so both the LUTs and the dumb-terminal
+  path are gone.
 - **Deriving the 50 Hz interrupt from the video raster** would delete the
   540000-count divider, but the design keeps 50 Hz independent of the
   59.94 Hz HDMI frame on purpose (a mode change must never disturb the

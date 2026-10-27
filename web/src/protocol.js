@@ -15,7 +15,7 @@
 //                              0x53 ('S') <idx>      load tape idx into DDR3
 //                              0x43 ('C')            eject
 //                              0x50 ('P')            play now (skip the hold)
-//      ASCII                 a single keystroke (dumb-terminal fallback)
+//      0x02 ... 'c'          raw SD card mode (src/sd/sd_raw_bridge.v)
 //
 //    board -> page
 //      0x06                  tape credit (the virtual deck's old flow control)
@@ -83,11 +83,12 @@ export const LIB = {
   EJECT: 0x43,     // 'C'
   PLAY: 0x50,      // 'P'
   INSTANT: 0x49,   // 'I'
-  TYPE_LOAD: 0x54, // 'T'
   VERSION: 0x56,   // 'V'
-  UP_BEGIN: 0x57,  // 'W' (deprecated)
-  UP_END: 0x45,    // 'E' (deprecated)
 }
+
+/** Raw SD card mode (sd_raw_bridge.v): 0x02 enters, 'c' leaves. */
+export const CARD_ENTER = 0x02
+export const CARD_EXIT = 0x63
 
 /** One key event. `pos` is the matrix position, `down` true to press. */
 export function encodeKey(pos, down) {
@@ -122,11 +123,6 @@ export function encodePlayTape() {
 /** Activate instant load for the loaded tape. */
 export function encodeInstantLoad() {
   return Uint8Array.from([LIB_CMD, LIB.INSTANT])
-}
-
-/** Trigger the "Type LOAD \"\" + ENTER" macro. */
-export function encodeTypeLoad() {
-  return Uint8Array.from([LIB_CMD, LIB.TYPE_LOAD])
 }
 
 /** Ask the board for its firmware/bitstream version. */
@@ -175,31 +171,6 @@ export function encodeSnapExecute() {
   return Uint8Array.from([SNAP_HDR, 0x05])
 }
 
-/** Begin an upload: the player is cleared and waits for 0xFD bytes. */
-export function encodeUploadStart() {
-  return Uint8Array.from([LIB_CMD, LIB.UP_BEGIN])
-}
-
-/** The upload is complete; the board makes it ready to play. */
-export function encodeUploadEnd() {
-  return Uint8Array.from([LIB_CMD, LIB.UP_END])
-}
-
-/** One uploaded tape's bytes, as 0xFD packets, `chunk` bytes at a time. */
-export function encodeUploadBytes(bytes, chunk = 4096) {
-  const parts = []
-  for (let off = 0; off < bytes.length; off += chunk) {
-    const n = Math.min(chunk, bytes.length - off)
-    const out = new Uint8Array(n * 2)
-    for (let i = 0; i < n; i++) {
-      out[i * 2] = TAPE_HDR
-      out[i * 2 + 1] = bytes[off + i]
-    }
-    parts.push(out)
-  }
-  return parts
-}
-
 /** Request a screen capture from the board. */
 export function encodeScreenCapture() {
   return Uint8Array.from([CMD_SCR_CAP])
@@ -208,10 +179,6 @@ export function encodeScreenCapture() {
 /** The FPGA's credit byte, for the web-deck build. */
 export const TAPE_CREDIT = 0x06
 
-/** One tape byte on the wire. */
-export function encodeTapeByte(b) {
-  return Uint8Array.from([TAPE_HDR, b & 0xff])
-}
 
 /** What the FPGA prints once, after reset. serial-link.js probes for this. */
 export const HANDSHAKE = 'ZX Spectrum'

@@ -4,14 +4,13 @@
 //  The library is the card's: the board lists every .TAP in the root
 //  directory and the page may only pick from that list.  Picking a row and
 //  pressing LOAD streams it from the card into the DDR3 player; the ROM's own
-//  LOAD "" (or the PLAY button) starts it.  There is no upload control on
-//  purpose -- the cassette deck plays what is in it.
+//  LOAD "" (or the PLAY button) starts it.  Upload and each row's delete button
+//  edit the card itself (App.jsx withCard), then the board is asked to relist.
 // ============================================================================
 
 import React from 'react'
 import Cassette from './Cassette.jsx'
 import { DECK } from '../protocol.js'
-import { tapeName } from '../library.js'
 
 const kb = (n) => (n >= 1024 ? `${(n / 1024).toFixed(1)} KB` : `${n} B`)
 
@@ -29,6 +28,7 @@ export default function TapeCard({
   onInstantLoad,
   onTypeLoad,
   onLoadSnapshot,
+  onDelete,
 }) {
   const { entries, selected, loaded, state, pos, len } = library
   const entry = library.deckEntry
@@ -118,10 +118,19 @@ export default function TapeCard({
                       }}
                       title={`${t.name}\n${kb(t.size)}${i === loaded ? '\nin the player' : ''}${isZ80 ? '\nClick to load snapshot' : ''}`}
                     >
-                      <span className="tc-row-name">{tapeName(t.name)}</span>
+                      <span className="tc-row-name">{library.displayName(t.name)}</span>
                       <span className={`tc-badge badge-${ext.toLowerCase()}`}>{ext}</span>
                       <span className="tc-row-size">{kb(t.size)}</span>
                       {i === loaded && <span className="tc-row-dot" title="in the player" />}
+                    </button>
+                    <button
+                      className="tc-del"
+                      onClick={() => onDelete(i)}
+                      disabled={!connected || demo || uploadProgress !== null || state === DECK.LOADING}
+                      title={`Delete ${library.displayName(t.name)} from the card`}
+                      aria-label={`Delete ${library.displayName(t.name)}`}
+                    >
+                      &#10005;
                     </button>
                   </li>
                 )
@@ -133,7 +142,7 @@ export default function TapeCard({
         {/* ---- the deck ------------------------------------------------- */}
         <div className="tc-deck">
           <Cassette
-            name={entry ? entry.name : ''}
+            name={entry ? library.displayName(entry.name) : ''}
             size={len || (entry ? entry.size : 0)}
             pos={pos}
             state={state}

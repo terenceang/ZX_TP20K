@@ -14,8 +14,11 @@
 //
 //  `sub` is the red legend (SYMBOL SHIFT); `white` is the white legend
 //  (CAPS SHIFT, mostly BASIC tokens, which the ROM itself provides -- we do
-//  not send tokens, just keys).
+//  not send tokens, just keys).  `typeText` is the typist: text in, paced
+//  matrix key events out.
 // ============================================================================
+
+import { encodeKey } from './protocol.js'
 
 /** @typedef {{id: string, row: number, col: number, legend: string, sub?: string, wide?: boolean, latch?: boolean}} ZxKey */
 
@@ -161,6 +164,31 @@ export function charToChord(ch) {
   const m = CHAR_MAP[ch]
   if (m) return chord(m.zx, m.sym, false)
   return null
+}
+
+// ---------------------------------------------------------------------------
+//  The typist: text in, paced matrix key events out.
+//
+//  One chord at a time: all its keys down (shift keys first), held ~45 ms --
+//  two frames of the ROM's 50 Hz keyboard scan -- then up, then a ~35 ms gap
+//  so the next chord reads as a separate press.  Translation happens here, in
+//  the page: the board only ever sees membrane contacts.
+// ---------------------------------------------------------------------------
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+export async function typeText(text, send, { connected = true, holdMs = 45, gapMs = 35 } = {}) {
+  if (!connected) return
+  for (const ch of text) {
+    const chord = charToChord(ch)
+    if (!chord) continue
+    for (const k of chord.keys) send(encodeKey(k.pos, true))
+    await sleep(holdMs)
+    for (const k of chord.keys) send(encodeKey(k.pos, false))
+    await sleep(gapMs)
+  }
 }
 
 // ---------------------------------------------------------------------------

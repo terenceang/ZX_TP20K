@@ -6,8 +6,8 @@
 //
 //    FE <pos> <down>   down sets, up clears the bit
 //    FF 04             all keys up
-//    plain ASCII       maps to the key (+CAPS SHIFT / +SYMBOL SHIFT) and
-//                      holds it on the timer
+//    anything else     ignored -- the board only takes matrix key events,
+//                      like the real membrane (translation is the page's job)
 //
 //  plusarg +quiet=1 keeps the noise down.
 // ============================================================================
@@ -29,7 +29,7 @@ module tb_input;
     zx_input u_dut (
         .clk(clk), .reset(reset), .uart_rx(uart_rx),
         .vk_matrix(vk_matrix), .key_hit(key_hit),
-        .type_go(1'b0), .card_mode(1'b0), .snap_busy(1'b0),
+        .card_mode(1'b0),
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play)
     );
@@ -116,19 +116,10 @@ module tb_input;
         send_byte(8'hFF); send_byte(8'h04); settle;
         check(vk_matrix, 40'd0, "FF 04 all up");
 
-        // ASCII 'A' = CAPS SHIFT + A (A is row 1, col 0 -> pos 5)
+        // a plain ASCII byte is NOT translated: the board only takes matrix
+        // key events, like the real membrane (translation is the page's job)
         send_byte(8'h41); settle;
-        check(vk_matrix, (40'd1 << 0) | (40'd1 << 5), "ASCII A = CAPS SHIFT + A");
-
-        // ASCII '.' = SYMBOL SHIFT (pos 37) + M (row 7, col 2 -> pos 37... M
-        // is 7*5+2 = 37, the same as SYMBOL SHIFT's 7*5+1 = 36: check both)
-        send_byte(8'h2E);
-        repeat (300000) @(posedge clk);        // past the 40 ms hold
-        check(vk_matrix, (40'd1 << 36) | (40'd1 << 37), "ASCII . = SYMBOL SHIFT + M");
-
-        // and the hold releases again
-        repeat (900000) @(posedge clk);
-        check(vk_matrix, 40'd0, "the ASCII key released");
+        check(vk_matrix, 40'd0, "ASCII byte ignored");
 
         // ---- the tape library's commands --------------------------------
         lib_clear;

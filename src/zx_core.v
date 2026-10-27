@@ -45,8 +45,6 @@ module zx_core #(
 
     // the tape player's EAR line (1 = idle high)
     input  wire        ear,
-    // pulse: the board types LOAD "" + ENTER into the keyboard path
-    input  wire        type_go,
 
     // the tape library's commands from the page (0xFB packets)
     output wire        lib_list,
@@ -286,14 +284,12 @@ module zx_core #(
     zx_input u_keys (
         .clk(clk), .reset(reset), .uart_rx(uart_rx),
         .vk_matrix(vk_matrix), .key_hit(key_hit),
-        .type_go(type_go),
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play),
         .cmd_instant(cmd_instant),
         .cmd_version(cmd_version),
         .scr_req(scr_cap_req),
         .card_mode(card_mode),
-        .snap_busy(snap_pause_cpu),
         .rx_byte_out(rx_byte_out),
         .rx_valid_out(rx_valid_out)
     );

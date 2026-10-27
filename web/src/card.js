@@ -18,10 +18,6 @@ export class Card {
     return new Card(fs)
   }
 
-  async scan() {
-    return this.fs.scan()
-  }
-
   async upload(name, data, onProgress) {
     return this.fs.create(name, data, onProgress)
   }

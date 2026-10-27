@@ -254,7 +254,6 @@ module sd_vol #(
     reg        walk_ok = 1'b0;
     reg [31:0] fstart [0:3];
     reg [16:0] fnsec [0:3];
-    reg        hdr_ok = 1'b0;           // the floppy being loaded is WOZ 1/2, 5.25 inch
     // the config parser
     reg [2:0]  ps = P_K0;
     reg        tkey = 1'b0;             // ZX tape: the key was TAPE, not S6D1
@@ -710,6 +709,10 @@ module sd_vol #(
                                 end
                                 L_LIB:
                                     if (lhit) begin
+                                        // ZX tape: drive 0 is mounted afresh, so an
+                                        // earlier failure there (a stale ZXCONFIG.TXT
+                                        // at boot) must not outlive it
+                                        present[0] <= 1'b0; fail[0] <= 1'b0;
                                         ld_mask <= 4'd1; k <= 2'd0;
                                         lmode <= 2'd0; lk <= L_DRV;
                                     end else if (dir_end) begin
@@ -751,8 +754,9 @@ module sd_vol #(
                                         lk <= L_DDR;
                                     end
                                 L_LOAD: begin
-                                    // a floppy that is not WOZ2 was not given to the store
-                                    if (k[1] || hdr_ok) present[k] <= 1'b1; else fail[k] <= 1'b1;
+                                    // ZX tape: a .TAP has no header to check -- the floppy
+                                    // build's WOZ test (hdr_ok) failed every tape here
+                                    present[k] <= 1'b1;
                                     if (!k[1]) crc_done[k[0]] <= 1'b0;
                                     lk <= L_NEXT;
                                 end
@@ -818,7 +822,7 @@ module sd_vol #(
                             // slot 7 is read a block at a time when prodos_hd asks
                             if (k[1]) begin present[k] <= 1'b1; lk <= L_NEXT; end
                             else begin
-                                lk_wait <= 1'b1; hdr_ok <= 1'b0;
+                                lk_wait <= 1'b1;
                                 rd(fstart[k], fnsec[k][15:0] - 16'd1, T_FL, J_LK);
                             end
                         L_NEXT: if (k == 2'd3) lk <= L_IDLE; else begin k <= k + 1'b1; lk <= L_DRV; end

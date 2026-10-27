@@ -11,21 +11,8 @@
 //    board -> page   0x06            "send me another"
 // ============================================================================
 
-import { TAPE_HDR, TAPE_CREDIT } from './protocol.js'
-
-/**
- * Splits the board's byte stream: how many tape credits it carries, and the
- * text bytes (the boot banner) to show.
- */
-export function parseFromFpga(bytes) {
-  let credits = 0
-  const text = []
-  for (const b of bytes) {
-    if (b === TAPE_CREDIT) credits += 1
-    else text.push(b)
-  }
-  return { credits, text }
-}
+import { TAPE_HDR } from './protocol.js'
+import { typeText } from './zxkeys.js'
 
 /** A .TAP being played: hold the bytes, answer credits with 0xFD packets. */
 export class TapePump {
@@ -61,10 +48,20 @@ export class TapePump {
 }
 
 /**
- * The keys to press once the tape is rolling.  Sent as plain ASCII: the FPGA's
- * fallback maps them (CAPS SHIFT for capitals, RETURN for \r), and each needs
- * ~100 ms so the ROM sees it held for a frame or two.
+ * The text the page types to start a tape: a plain 'j' is the LOAD keyword
+ * token at the ROM's K cursor (the letters L,O,A,D would type "LOAD" as
+ * ordinary characters), then two quotes, then RETURN.
  */
-export function loadCommand(text = 'LOAD ""\r') {
-  return Array.from(new TextEncoder().encode(text))
+export function loadCommand() {
+  return 'j""\r'
+}
+
+/**
+ * Types LOAD "" + ENTER as paced matrix key events (FE packets): 'j' presses
+ * J, each quote is the SYMBOL SHIFT+P chord, RETURN ends the line.  The board
+ * only sees key presses -- the character-to-key translation lives in the page
+ * (zxkeys.js), like the real membrane, which never knows what a key "means".
+ */
+export function typeLoadCommand(send, opts) {
+  return typeText(loadCommand(), send, opts)
 }

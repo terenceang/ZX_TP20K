@@ -12,7 +12,7 @@
 // ============================================================================
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { LAYOUT, KEY_BY_ID, pos as posOf, eventToChord, charToChord } from '../zxkeys.js'
+import { LAYOUT, KEY_BY_ID, pos as posOf, eventToChord, typeText } from '../zxkeys.js'
 import { encodeKey, encodeAllUp } from '../protocol.js'
 
 /** width of a key, in normal-key units */
@@ -97,7 +97,7 @@ export default function Keyboard({ link, connected }) {
   const [pasteText, setPasteText] = useState('')
 
   const paste = useCallback(() => {
-    void typeText(pasteText, send, connected)
+    void typeText(pasteText, send, { connected })
     setPasteOpen(false)
   }, [pasteText, send, connected])
 
@@ -199,24 +199,4 @@ export default function Keyboard({ link, connected }) {
       )}
     </div>
   )
-}
-
-/**
- * Type a listing: one chord at a time, held long enough for the ROM's 50 Hz
- * keyboard scan and separated by a gap -- like a very careful typist.
- */
-async function typeText(text, send, connected) {
-  if (!connected) return
-  for (const ch of text) {
-    const chord = charToChord(ch)
-    if (!chord) continue
-    for (const k of chord.keys) send(encodeKey(k.pos, true))
-    await sleep(45)
-    for (const k of chord.keys) send(encodeKey(k.pos, false))
-    await sleep(35)
-  }
-}
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms))
 }

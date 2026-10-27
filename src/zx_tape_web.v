@@ -18,7 +18,8 @@
 //  LOAD "" inside the leader tone (the page does it for you).
 //
 //  0xFD collides with nothing in the keyboard protocol (0xFE key, 0xFF all-up,
-//  anything else a printable ASCII keystroke) and 0x06 is not a banner byte.
+//  anything else ignored -- the board takes matrix key events only) and 0x06
+//  is not a banner byte.
 // ============================================================================
 `default_nettype none
 

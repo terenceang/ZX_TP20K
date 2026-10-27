@@ -10,7 +10,6 @@
 
 import React from 'react'
 import { DECK } from '../protocol.js'
-import { tapeName } from '../library.js'
 
 const PACK_MIN = 11
 const PACK_MAX = 27
@@ -43,7 +42,7 @@ export default function Cassette({ name, size = 0, pos = 0, state = DECK.EMPTY, 
   const packL = PACK_MIN + (PACK_MAX - PACK_MIN) * (1 - f)
   const packR = PACK_MIN + (PACK_MAX - PACK_MIN) * f
   const counter = String(Math.floor(pos / 1024) % 10000).padStart(4, '0')
-  const label = name ? tapeName(name) : 'no tape'
+  const label = name || 'no tape'
 
   return (
     <svg className="cassette" viewBox="0 0 360 216" role="img" aria-label={`cassette ${label}`}>

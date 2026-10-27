@@ -8,14 +8,13 @@ import Keyboard from './components/Keyboard.jsx'
 import TapeCard from './components/TapeCard.jsx'
 import Screen from './components/Screen.jsx'
 import { BoardFrames, TapeLibrary, DemoBoard } from './library.js'
-import { Card, cardDevice, queryCardStatus } from './card.js'
+import { Card, cardDevice, queryCardStatus, from83 } from './card.js'
 import {
   encodeListRequest,
   encodeSelectTape,
   encodeEjectTape,
   encodePlayTape,
   encodeInstantLoad,
-  encodeTypeLoad,
   encodeVersionRequest,
   encodeScreenCapture,
   encodeSnapEnter,
@@ -23,9 +22,14 @@ import {
   encodeSnapBorder,
   encodeSnapRegs,
   encodeSnapExecute,
+  CARD_ENTER,
+  CARD_EXIT,
 } from './protocol.js'
 import { parseZ80Snapshot } from './z80-snapshot.js'
+import { typeLoadCommand } from './tape.js'
 import versionInfo from './version.json'
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const DEMO = typeof location !== 'undefined' && /[?&]demo=1\b/.test(location.search)
 
@@ -67,9 +71,11 @@ export default function App() {
       }
     } else {
       lib.current.apply(ev)
+      if (ev.type === 'list') refreshNames.current()
     }
     rerender()
   }))
+  const refreshNames = useRef(() => {})
   const demo = useRef(null)
   const [firmwareVersion, setFirmwareVersion] = useState(null)
 
@@ -125,6 +131,48 @@ export default function App() {
     if (demo.current) return
     if (connected) link.write(bytes)
   }, [link, connected])
+
+  /**
+   * Run `fn(card)` with the board in raw card mode, and always hand the UART
+   * back.  The board's own SD jobs (a tape streaming into DDR3, a listing) make
+   * raw reads answer "lost", so wait for the card to go idle first.
+   */
+  const withCard = useCallback(async (fn) => {
+    send([CARD_ENTER])
+    await sleep(60)
+    try {
+      let status
+      for (let t = 0; t < 30; t++) {
+        status = await queryCardStatus(link, { timeoutMs: 2000 })
+        if (!status?.busy && !status?.loading) break
+        await sleep(100)
+      }
+      if (!status || !status.fsOk) throw new Error('SD card filesystem is not ready.')
+      if (status.busy || status.loading) throw new Error('SD card is busy.')
+      return await fn(await Card.open(cardDevice(link)))
+    } finally {
+      send([CARD_EXIT])
+      await sleep(50)
+    }
+  }, [send, link])
+
+  // The board lists 8.3 names; the long ones are in the card's own LFN
+  // entries, so read the root once the listing settles (the board is asked
+  // twice on connect, hence the debounce) and show those instead.
+  const namesTimer = useRef(null)
+  refreshNames.current = () => {
+    if (demo.current) return
+    clearTimeout(namesTimer.current)
+    namesTimer.current = setTimeout(async () => {
+      try {
+        const files = await withCard((card) => card.fs.list())
+        lib.current.longNames = new Map(files.map((f) => [from83(f.short), f.name]))
+        rerender()
+      } catch (err) {
+        console.warn('Long names unavailable:', err)
+      }
+    }, 800)
+  }
 
   // ---- come up connected ------------------------------------------------
   // Web Serial lets a page open a port it has already been given, with no
@@ -188,41 +236,25 @@ export default function App() {
     rerender()
   }, [rerender])
 
-  const onLoad = useCallback(async () => {
+  // No ZXCONFIG.TXT write here: the library build never hands the boot mount
+  // to the deck, and a name the board cannot mount latches drive 0's failure.
+  const onLoad = useCallback(() => {
     const i = lib.current.selected
     if (i < 0) return
-    const entry = lib.current.entries[i]
-    if (demo.current) {
-      demo.current.select(i)
-    } else {
-      send(encodeSelectTape(i))
-      // Persist chosen tape to ZXCONFIG.TXT on the SD card
-      if (entry && entry.name) {
-        try {
-          send([0x02]) // enter raw card mode
-          await new Promise((r) => setTimeout(r, 60))
-          const card = await Card.open(cardDevice(link))
-          const cfgText = `TAPE=${entry.name}\r\n`
-          await card.upload('ZXCONFIG.TXT', new TextEncoder().encode(cfgText))
-        } catch (err) {
-          console.warn('Could not persist ZXCONFIG.TXT:', err)
-        } finally {
-          send([0x63]) // 'c' exit raw card mode
-        }
-      }
-    }
-  }, [send, link])
+    if (demo.current) demo.current.select(i)
+    else send(encodeSelectTape(i))
+  }, [send])
 
   const onInstantLoad = useCallback(() => {
     if (demo.current) return
     send(encodeInstantLoad())
-    // Auto-trigger LOAD "" macro so the game runs immediately
-    setTimeout(() => send(encodeTypeLoad()), 100)
+    // Auto-type LOAD "" so the game runs immediately
+    setTimeout(() => typeLoadCommand(send), 100)
   }, [send])
 
   const onTypeLoad = useCallback(() => {
     if (demo.current) return
-    send(encodeTypeLoad())
+    typeLoadCommand(send)
   }, [send])
 
   const onLoadSnapshot = useCallback(async (entry) => {
@@ -237,27 +269,25 @@ export default function App() {
 
     try {
       setUploadProgress({ percent: 0, detail: 'Reading snapshot from SD card...' })
-      send([0x02]) // enter raw card mode
-      await new Promise((r) => setTimeout(r, 60))
-
-      const card = await Card.open(cardDevice(link))
-      const fileData = await card.download(entry.name, (done, total) => {
-        const percent = total ? Math.round((done / total) * 100) : 0
-        setUploadProgress({
-          percent,
-          detail: `Reading snapshot: ${Math.round(done / 1024)} / ${Math.round(total / 1024)} KB`,
+      const name = entry.name
+      const fileData = await withCard(async (card) => {
+        const f = await card.fs.find(name)
+        if (!f) throw new Error(`${name} is not on the card.`)
+        return card.download(f, (done, total) => {
+          const percent = total ? Math.round((done / total) * 100) : 0
+          setUploadProgress({
+            percent,
+            detail: `Reading snapshot: ${Math.round(done / 1024)} / ${Math.round(total / 1024)} KB`,
+          })
         })
       })
-
-      send([0x63]) // exit card mode
-      await new Promise((r) => setTimeout(r, 60))
 
       setUploadProgress({ percent: 100, detail: 'Injecting snapshot into memory...' })
       const snap = parseZ80Snapshot(fileData)
 
       // Enter snapshot mode (pause CPU)
       send(encodeSnapEnter())
-      await new Promise((r) => setTimeout(r, 10))
+      await sleep(10)
 
       // Set border
       send(encodeSnapBorder(snap.border))
@@ -267,12 +297,12 @@ export default function App() {
       for (let addr = 0; addr < 49152; addr += CHUNK) {
         const chunk = snap.ram.subarray(addr, Math.min(addr + CHUNK, 49152))
         send(encodeSnapChunk(addr, chunk))
-        await new Promise((r) => setTimeout(r, 15))
+        await sleep(15)
       }
 
       // Set CPU registers
       send(encodeSnapRegs(snap.regs))
-      await new Promise((r) => setTimeout(r, 10))
+      await sleep(10)
 
       // Release CPU and jump to PC
       send(encodeSnapExecute())
@@ -280,10 +310,9 @@ export default function App() {
     } catch (err) {
       console.error('Snapshot loading failed:', err)
       alert(`Snapshot loading failed: ${err.message}`)
-      send([0x63]) // ensure out of raw mode
       setUploadProgress(null)
     }
-  }, [send, link])
+  }, [send, withCard])
 
   // Upload exclusively to the SD card
   const onUpload = useCallback(async (file) => {
@@ -303,34 +332,27 @@ export default function App() {
 
     try {
       setUploadProgress({ percent: 0, detail: 'Preparing SD card...' })
-      send([0x02])
-      await new Promise((r) => setTimeout(r, 60))
-
-      const status = await queryCardStatus(link, { timeoutMs: 2000 })
-      if (!status || !status.fsOk) throw new Error('SD card filesystem is not ready.')
-
-      const card = await Card.open(cardDevice(link))
-
-      await card.upload(file.name, bytes, (done, total) => {
-        const percent = total ? Math.round((done / total) * 100) : 0
-        setUploadProgress({
-          percent,
-          detail: `Writing to SD card: ${Math.round(done / 1024)} / ${Math.round(total / 1024)} KB`,
+      await withCard(async (card) => {
+        // the same name again replaces the file on the card (fat32.js create)
+        if (await card.fs.find(file.name) && !window.confirm(`${file.name} is already on the card. Replace it?`)) return
+        await card.upload(file.name, bytes, (done, total) => {
+          const percent = total ? Math.round((done / total) * 100) : 0
+          setUploadProgress({
+            percent,
+            detail: `Writing to SD card: ${Math.round(done / 1024)} / ${Math.round(total / 1024)} KB`,
+          })
         })
+        setUploadProgress({ percent: 100, detail: 'Finishing up...' })
       })
-
-      setUploadProgress({ percent: 100, detail: 'Finishing up...' })
     } catch (err) {
       console.error('SD card upload failed:', err)
       alert(`SD card upload failed: ${err.message}`)
     } finally {
-      send([0x63]) // 'c'
-      await new Promise((r) => setTimeout(r, 50))
       setUploadProgress(null)
       send(encodeListRequest())
       setTimeout(() => send(encodeListRequest()), 400)
     }
-  }, [send, link])
+  }, [send, withCard])
 
   const captureScreen = useCallback(() => {
     setCapturing(true)
@@ -356,6 +378,29 @@ export default function App() {
     }
   }, [send, rerender])
 
+  const onDelete = useCallback(async (i) => {
+    const entry = lib.current.entries[i]
+    if (!entry || demo.current) return
+    const name = entry.name
+    if (!window.confirm(`Delete ${name} from the SD card?`)) return
+    // the board lists by position: a deleted tape in the player goes with it
+    if (i === lib.current.loaded) send(encodeEjectTape())
+    try {
+      setUploadProgress({ percent: 0, detail: `Deleting ${name}...` })
+      await withCard(async (card) => {
+        const f = await card.fs.find(name)
+        if (!f) throw new Error(`${name} is not on the card.`)
+        await card.remove(f)
+      })
+    } catch (err) {
+      console.error('SD card delete failed:', err)
+      alert(`Delete failed: ${err.message}`)
+    } finally {
+      setUploadProgress(null)
+      onRescan()
+    }
+  }, [send, withCard, onRescan])
+
   return (
     <main>
       <header>
@@ -372,7 +417,7 @@ export default function App() {
             onClick={() => setShowScreen((s) => !s)}
             title={showScreen ? 'Hide Screen Pane' : 'Show Screen Pane'}
           >
-            ðŸ“º Screen
+            📺 Screen
           </button>
           {!DEMO && (connected
             ? <button onClick={disconnect}>Disconnect</button>
@@ -403,6 +448,7 @@ export default function App() {
         onInstantLoad={onInstantLoad}
         onTypeLoad={onTypeLoad}
         onLoadSnapshot={onLoadSnapshot}
+        onDelete={onDelete}
       />
 
       {showScreen && (

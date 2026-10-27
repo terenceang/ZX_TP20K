@@ -875,3 +875,19 @@ footer code { color: var(--ink); }
   background: #4ade80;
   box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
 }
+
+/* the library row and its delete button sit side by side */
+.tc-list li { display: flex; align-items: center; gap: 2px; }
+.tc-del {
+  flex: none;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #7d858c;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.tc-del:hover:not(:disabled) { color: #ff7b72; border-color: #5a2a2a; }
+.tc-del:disabled { opacity: 0.3; cursor: default; }

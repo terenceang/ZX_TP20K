@@ -15,7 +15,7 @@ DDR3 is brought up and self-tested, ready for the cores that use it next.
 |---|---|
 | `src/zx_core.v` | tv80 (Z80) at 3.5 MHz, 16K ROM + 48K RAM, the ULA's port `0xFE` (keyboard + border + beeper), 50 Hz interrupts |
 | `src/zx_video.v` | the ULA picture: 256x192 doubled to 512x384 inside its border, on a 720x480p raster; the screen file's 64 bytes per line are prefetched during the left border |
-| `src/zx_input.v` | the web keyboard's UART: 1 Mbaud, `FE <pos> <down>` packets, ASCII fallback for terminals |
+| `src/zx_input.v` | the web keyboard's UART: 1 Mbaud, `FE <pos> <down>` matrix key events (no translation — the page does that) |
 | `src/zx_uart_tx.v` | the boot banner the page probes for |
 | `src/zx_ddr.v` | the DDR3 (adapted from the sibling project's proven `aux_ram.v`): calibrates, self-tests, exposes one client port |
 | `src/hdmi/` | HDMI TX: TMDS encoders, data islands with 48 kHz audio (the beeper), AVI/ACR packets — shared with the sibling apple2e project and verified on this hardware |
@@ -56,16 +56,17 @@ npm run dev      # http://localhost:5173
 - **Paste BASIC** types a listing at a rate the ROM's 50 Hz keyboard scan
   can follow.
 
-A dumb terminal works too (115200 is *not* the rate — it is **1 000 000**
-8N1): any byte that is not `FE`/`FF` is one ASCII keystroke, mapped by the
-FPGA itself.
+- The link is raw Web Serial (115200 is *not* the rate — it is **1 000 000**
+  8N1), and the board does no translation: it only sees matrix key events,
+  like the real keyboard's membrane.  What a character *means* is the page's
+  job (`web/src/zxkeys.js`).
 
 Protocol, both ends (`web/src/protocol.js`, `src/zx_input.v`):
 
 ```
 0xFE <pos> <down>   one key: pos = ZX matrix position row*5+col (0..39)
 0xFF 0x04           all keys up
-anything else       one ASCII keystroke (FPGA maps it)
+anything else       ignored
 ```
 
 ## Simulating

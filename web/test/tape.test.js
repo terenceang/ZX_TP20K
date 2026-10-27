@@ -4,14 +4,8 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { TapePump, parseFromFpga, loadCommand } from '../src/tape.js'
-import { TAPE_HDR, TAPE_CREDIT } from '../src/protocol.js'
-
-test('parseFromFpga counts credits and keeps the text', () => {
-  const { credits, text } = parseFromFpga(Uint8Array.from([0x5a, TAPE_CREDIT, 0x58, TAPE_CREDIT]))
-  assert.equal(credits, 2)
-  assert.deepEqual(text, [0x5a, 0x58])
-})
+import { TapePump, loadCommand, typeLoadCommand } from '../src/tape.js'
+import { TAPE_HDR } from '../src/protocol.js'
 
 test('TapePump answers a credit with one 0xFD packet', () => {
   const p = new TapePump()
@@ -42,6 +36,17 @@ test('TapePump is empty until a file is loaded, and ejecting clears it', () => {
   assert.equal(p.next(4).length, 0)
 })
 
-test('the typed load command is LOAD "" and RETURN', () => {
-  assert.deepEqual(loadCommand(), [0x4c, 0x4f, 0x41, 0x44, 0x20, 0x22, 0x22, 0x0d])
+test('the load command is the J-key LOAD token, quotes, RETURN', () => {
+  assert.equal(loadCommand(), 'j""\r')
+})
+
+test('typeLoadCommand sends paced matrix key events, not ASCII', async () => {
+  const sent = []
+  await typeLoadCommand((b) => sent.push(...b), { holdMs: 1, gapMs: 1 })
+  assert.deepEqual(sent, [
+    0xfe, 33, 1, 0xfe, 33, 0,                              // J: the LOAD token
+    0xfe, 36, 1, 0xfe, 25, 1, 0xfe, 36, 0, 0xfe, 25, 0,    // " = SYMBOL SHIFT+P chord
+    0xfe, 36, 1, 0xfe, 25, 1, 0xfe, 36, 0, 0xfe, 25, 0,    // " again
+    0xfe, 30, 1, 0xfe, 30, 0,                              // ENTER
+  ])
 })

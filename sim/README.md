@@ -7,7 +7,7 @@ around them.
 |---|---|
 | `tb_zx.v` | **the acceptance test**: the 48K ROM boots to the authentic power-on screen — the ROM's own "© 1982 Sinclair Research Ltd" glyphs in the bottom character row of an all-white display, nothing else inked, and the system variables the ROM's start-up code computes |
 | `tb_video.v` | `zx_video`'s screen-file interleave: known pixel bytes at known (row, line, column) positions come out in exactly those character cells of the 720x480 frame |
-| `tb_input.v` | the web keyboard's UART: `FE <pos> <down>` chords, `FF 04`, the ASCII fallback and its hold/release timing |
+| `tb_input.v` | the web keyboard's UART: `FE <pos> <down>` chords, `FF 04`, and that anything else is ignored |
 | `tb_ddr.v` | `zx_ddr` against the behavioural IP model: self-test, write/read-back, masked writes |
 | `tb_top.v` | the whole top level elaborates; PLLs lock; frames arrive; pixels are palette-legal; TMDS clock lane toggles |
 | `tb_tv80.v` | tv80 against the strobe scheme `zx_core` uses: EXX/shadow registers, ED-group stores, indexed BIT/SET/RES on IY |

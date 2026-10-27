@@ -35,9 +35,10 @@ TAPE.TAP          the tape image: 8.3 name, under 1 MB, one contiguous run
 **Steps**
 
 1. Power on / press **S0** (reset).  The ROM boots to the © prompt in ~1.5 s.
-2. **Flip DIP4 on**: the board types `LOAD ""` + ENTER into its own keyboard
-   path (one ASCII key per 100 ms, the same path a terminal uses) — or type it
-   yourself if you prefer.  **That is what starts the deck**: the board
+2. Type `LOAD ""` + ENTER — on the Spectrum keyboard (`J` for the LOAD
+   keyword, SYMBOL SHIFT+P twice, ENTER) or with the web page's **LOAD ""**
+   button, which sends the same keystrokes over the UART for you.  **That is
+   what starts the deck**: the board
    watches for the ROM's LD-BYTES entry (0x0556) and only then lets the file
    stream, so the leader tone always begins at the moment the Spectrum asks
    for it (the normal cassette behaviour: press LOAD, the tape rolls).

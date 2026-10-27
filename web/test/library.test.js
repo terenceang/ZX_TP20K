@@ -35,8 +35,8 @@ test('entries arrive one at a time, then the end marker', () => {
   const { text } = f.feed(stream)
   assert.equal(text.length, 0)
   assert.deepEqual(events, [
-    { type: 'entry', name: 'HOBBIT  TAP', size: 47178 },
-    { type: 'entry', name: 'JETPAC  TAP', size: 30208 },
+    { type: 'entry', name: 'HOBBIT.TAP', size: 47178 },
+    { type: 'entry', name: 'JETPAC.TAP', size: 30208 },
     { type: 'list', count: 2 },
   ])
 })
@@ -53,7 +53,7 @@ test('a frame split anywhere still parses', () => {
   const stream = Uint8Array.from([...entry('A       TAP', 700), LIB_END, 1])
   for (const b of stream) f.feed(Uint8Array.from([b]))
   assert.deepEqual(events, [
-    { type: 'entry', name: 'A       TAP', size: 700 },
+    { type: 'entry', name: 'A.TAP', size: 700 },
     { type: 'list', count: 1 },
   ])
 })
@@ -141,4 +141,14 @@ test('screen capture command and frame parsing', () => {
   assert.equal(events[0].flash, 1)
   assert.equal(events[0].data.length, SCR_BYTES)
   assert.deepEqual(events[0].data, dummyData)
+})
+
+test('a second listing replaces the first instead of stacking onto it', () => {
+  const lib = new TapeLibrary()
+  const f = new BoardFrames((e) => lib.apply(e))
+  const list = [...entry('HOBBIT~1TAP', 47178), ...entry('SNAP    Z80', 49179), LIB_END, 2]
+  f.feed(Uint8Array.from([...list, ...list]))   // the page asks twice on connect
+  assert.deepEqual(lib.entries.map((e) => e.name), ['HOBBIT~1.TAP', 'SNAP.Z80'])
+  f.feed(Uint8Array.from([LIB_END, 0]))         // the last tape deleted
+  assert.deepEqual(lib.entries, [])
 })

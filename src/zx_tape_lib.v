@@ -266,23 +266,28 @@ module zx_tape_lib (
     reg [31:0] q_size [0:3];
     reg [1:0]  q_wr = 2'd0, q_rd = 2'd0;
     reg [4:0]  listed = 5'd0;
-    reg        push_now = 1'b0;      // a frame went into the queue this cycle
+    reg        push_now = 1'b0;      // a frame went into the queue last cycle
+    reg        pushed;               // ...or already this cycle (blocking): one slot a clock
+    reg        fail0_q = 1'b0;       // fail[0] is sticky: only its rise is news
     reg        q_pop    = 1'b0;      // the transmitter took one this cycle
 
     task push_frame(input [1:0] k, input [87:0] nm, input [31:0] sz);
         begin
-            if (q_n < 3'd4 && !push_now) begin
+            if (q_n < 3'd4 && !push_now && !pushed) begin
                 q_kind[q_wr] <= k;
                 q_name[q_wr] <= nm;
                 q_size[q_wr] <= sz;
                 q_wr     <= q_wr + 2'd1;
                 push_now <= 1'b1;
+                pushed    = 1'b1;
             end
         end
     endtask
 
     always @(posedge clk) begin
+        pushed       = 1'b0;
         push_now    <= 1'b0;
+        fail0_q     <= fail[0];
         lib_go      <= 1'b0;
         tap_start   <= 1'b0;
         eject_pulse <= 1'b0;
@@ -342,7 +347,11 @@ module zx_tape_lib (
                 img_len <= lib_size[23:0];
                 state   <= S_LOAD;
             end
-            if (lib_fail || fail[0] || (sd_err && (state == S_LOAD || sel_pending))) begin
+            // drive 0 failing to mount is an error only while we are loading it:
+            // a boot-time failure (ZXCONFIG.TXT naming a missing file) stays set
+            // until the next find clears it, and must not poison every load
+            if (lib_fail || (fail[0] && !fail0_q && state == S_LOAD) ||
+                (sd_err && (state == S_LOAD || sel_pending))) begin
                 state   <= S_ERR;
                 img_len <= 24'd0;
             end
@@ -397,18 +406,7 @@ module zx_tape_lib (
 
             if (tap_done && state == S_PLAY) state <= S_END;
 
-            // ---- one frame when the deck changes
-            if (state != state_q) begin
-                state_q <= state;
-                push_frame(2'd2, {85'd0, state}, 32'd0);
-            end
-
-            // ---- where the tape has got to, while it matters
-            if (rep_tick && (state == S_LOAD || state == S_PLAY) )
-                push_frame(2'd3, {56'd0, (state == S_LOAD) ? wr_count : rd_count},
-                           {8'd0, img_len});
-
-            // ---- the card's listing comes in
+            // ---- the card's listing comes in (one-shot pulses: first claim)
             if (lib_ent) begin
                 push_frame(2'd0, lib_name, lib_size);
                 listed <= listed + 5'd1;
@@ -417,6 +415,17 @@ module zx_tape_lib (
                 push_frame(2'd1, 88'd0, {27'd0, listed});
                 listed <= 5'd0;
             end
+
+            // ---- one frame when the deck changes; retried until it is queued
+            if (state != state_q && q_n < 3'd4 && !push_now && !pushed) begin
+                state_q <= state;
+                push_frame(2'd2, {85'd0, state}, 32'd0);
+            end
+
+            // ---- where the tape has got to, while it matters
+            if (rep_tick && (state == S_LOAD || state == S_PLAY) )
+                push_frame(2'd3, {56'd0, (state == S_LOAD) ? wr_count : rd_count},
+                           {8'd0, img_len});
 
             // ---- the queue's pointers move here, once ------------------
             if (q_pop && q_n != 3'd0) q_rd <= q_rd + 2'd1;

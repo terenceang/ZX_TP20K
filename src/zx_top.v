@@ -228,7 +228,6 @@ module zx_top (
         .ce_48k(ce_48k),
         .uart_rx(uart_rx),
         .key_hit(key_hit),
-        .type_go(1'b0),
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play),
         .cmd_instant(cmd_instant),

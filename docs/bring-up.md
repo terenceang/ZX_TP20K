@@ -57,11 +57,13 @@ Symptoms:
 |---|---|---|---|
 | 1 | sharp RGB | soft composite | colours bleed sideways, white stays white (try a red pixel on white) |
 | 2 | scanlines off | 25% darker | alternate raster lines slightly dimmer |
-| 4 | — | flip on → the board **types `LOAD ""` + ENTER** itself, once |
+| 4 | — | (unused — the `LOAD ""` macro lives in the web page, not the board) |
 | 5 | tape waits for `LOAD ""` | tape rolls from reset | with 5 off the deck starts when the ROM enters LOAD; with 5 on it is already running |
 
-DIP3 (E8) is spare.  With a tape on the card, the whole load is then: card in,
-reset, wait for the prompt, **flip DIP4**.  All are 1.5 V bank inputs with pull-downs, so an unpopulated switch
+DIP3 (E8) and DIP4 are spare.  With a tape on the card, the whole load is
+then: card in, reset, wait for the prompt, type `LOAD ""` + ENTER — on the
+Spectrum keyboard (`J`, SYMBOL SHIFT+P twice, ENTER) or with the web page's
+**LOAD ""** button.  All are 1.5 V bank inputs with pull-downs, so an unpopulated switch
 reads as off.
 
 ## 2c. Colour bars and the 1 kHz tone (S1 or S2)

@@ -6,8 +6,6 @@
 export const SECTOR_BYTES = 512
 export const ACK_BYTE = 0x06 // ASCII ACK returned by sd_raw_bridge.v after each chunk
 
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-
 /**
  * Helper to manage raw serial bytes during disk/card image transfers without
  * leaking binary bytes into the UI keyboard/screen streams.
