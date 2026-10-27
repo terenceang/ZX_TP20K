@@ -140,34 +140,6 @@ one.  Its level is `ZXCONFIG.TXT`'s `VOL=` (percent of full scale, 5 by
 default); it scales the tape only — the beeper stays at ±7000 — and the sum
 saturates rather than wraps above about `VOL=78`.
 
-## The television (DIP switches)
-
-`zx_tv_fx.v` sits between the ULA's RGB and the HDMI transmitter.  Two DIP
-switches select what it does (Documents/pinout.md):
-
-| DIP | Signal | Off | On |
-|---|---|---|---|
-| 1 (C7) | `sw_color_tv` | sharp RGB | soft composite: colours bleed sideways |
-| 2 (E9) | `sw_scanline` | scanlines off | 25% darker on alternate raster lines |
-
-DIP3 (E8), DIP4 (T4) and DIP5 (T5) are free: a Spectrum had a colour TV or a
-colour monitor, never a monochrome terminal, so there are no phosphor modes.
-
-The colour mode is the interesting one.  Composite video keeps full luma but
-only about 1.3 MHz of chroma, so colours smear sideways while the picture
-stays sharp.  That is done properly: luma `Y = 77R + 150G + 29B` on the DSP
-multipliers, chroma as `R-Y` and `B-Y`, a 2-tap chroma filter across output
-pixels (half a ZX pixel at the 2x upscale), then back to RGB with shift-add
-reconstruction (`G = Y - 0.509Cr - 0.186Cb`, and the 0.509/0.186 are
-1/2+1/128 and 1/8+1/16).
-
-The stage is pipelined three deep so the multiplier chain fits the 27 MHz
-pixel clock (it was 20 MHz with everything in one path).  **The latency is
-compensated in `zx_video`'s `X0`**: `zx_core` instantiates the video with
-`X0 = 104 - 3`, so the picture stays at x = 104..615 on the raster.
-
-Scanlines are a shift (`c - c/4` on odd lines), so they cost nothing.
-
 ### Test pattern
 
 `src/colorbar_gen.v` (the sibling project's, unchanged) draws 720x480 colour
@@ -223,41 +195,23 @@ The editor then sits in `WAIT_KEY` (0x15D4).  It does not draw a cursor until
 a key arrives: `KEY_INPUT` (0x10A8) clears the lower part because `TV_FLAG`
 bit 5 is set, and only then does the edit line appear.
 
-## Tape: two cassette sources, one player
+## Tape, snapshots and the card
 
-`src/tap_player.v` turns a `.TAP` byte stream into the ULA's EAR bit (port
-0xFE bit 6) with the real TAP structure: pilot 2168 T per pulse (8063 for a
-header, 3223 for data), sync 667/735, bits 855/1710 MSB-first, 1 s pauses,
-counted in 3.5 MHz T-states from `ce_cpu`.  `tb_tape` measures every half
-period and the byte order.  Two sources feed it; `src/config.vh`'s
-`ZX_TAPE_SD` picks one at build time.
+`docs/tape-library.md` has the whole of it.  In short: `zx_tape_lib` lists
+the card's `.TAP`/`.TZX`/`.Z80` files to the page, streams the chosen tape
+into DDR3 (`zx_tape_mem`), and `tap_player` turns it into EAR pulses (port
+0xFE bit 6) with the real timings.  The deck waits for the ROM's `LD-BYTES`
+(0x0556, `tape_load`) so the leader starts when `LOAD ""` runs.
 
-**Card (default, `ZX_TAPE_SD` defined).** `src/sd/sd_vol.v` + `spi_byte.v` are
-vendored from the sibling `apple2e_TP20K` project (hardware-proven SD/FAT32),
-patched only where a `.TAP` replaces a floppy image (marked `ZX tape:`).  It
-mounts the card, reads **`ZXCONFIG.TXT`** from the root, and streams the named
-file byte for byte, stalling its SPI clock whenever `src/zx_tape_sd.v`'s FIFO
-is full — so the file is pulled at cassette speed and never buffered in bulk.
+Three more things ride the same UART, all in `zx_core`'s domain:
 
-```
-ZXCONFIG.TXT      TAPE=TAPE.TAP        (8.3 names; S6D1=TAPE.TAP also works)
-                  VOL=5                (tape audio level, 0..100 %, 5 if absent)
-TAPE.TAP          the image, under 1 MB, clusters in one run
-```
-
-The deck is **on hold until the ROM enters LD-BYTES** (0x0556): `zx_core`
-pulses `tape_load` when the CPU fetches it, i.e. when `LOAD ""` runs, and only
-then does the file stream — so the leader tone always starts at the moment the
-Spectrum is listening.  **DIP5** (`sw_tape_auto`) skips the wait and rolls from
-reset.  LED5 is on while it plays.
-
-**Web (`ZX_TAPE_SD` commented out).** `src/zx_tape_web.v` takes bytes from the
-keyboard's own UART — `0xFD <byte>` per tape byte, and a `0x06` credit byte
-back while its FIFO has room — so the page drip-feeds the file.  The page's
-**Load tape** button loads the `.TAP`, answers credits, and types `LOAD ""` +
-ENTER for you.
-
-Both paths end in the same player, so the Spectrum cannot tell them apart.
+* `zx_snap` holds the CPU, writes RAM, sets the border and starts a register
+  trampoline: how a `.Z80` or an instant load goes in.
+* `zx_core`'s instant-load trap: while armed, `LD-BYTES` from 0x0562 reads as a
+  93-byte routine that takes the `.TAP` from port 0x5B (the store's head),
+  holding the CPU on `wait_n` while it is empty.
+* `zx_scr_cap` pauses the CPU and streams the 6912-byte screen file back to
+  the page, off the video's prefetch window like the CPU.
 
 ## DDR3
 
@@ -270,19 +224,18 @@ enables).  The 27 MHz client side and the IP's ~100 MHz user clock cross by
 toggle handshakes with two-clock stability; the .sdc declares the domains
 asynchronous.
 
-It is brought up but unused by the 48K core -- it is there so the 128K
-banks, tape/snapshot storage and anything after that have a proven, idle
-memory to land in.
+The tape store is its one client today; the 128K banks would be the next.
+The IP's user clock `mclk` is the design's tightest timing (a few percent
+of margin), and its worst paths are inside the encrypted IP.
 
 ## What is simplified
 
 - **No memory contention modelling.**  The real ULA steals cycles from the
   CPU when it touches the screen; here the CPU loses a fixed window per line
-  instead.  Timing-sensitive software (cassette loading, precise cycle
-  counting) would notice; the ROM, BASIC and games do not.
+  instead.  Software that counts cycles precisely would notice; the ROM,
+  BASIC, tape loading and most games do not.
 - **No floating bus.**  Reads from unused ports return 0xFF, not the ULA's
   semi-random bus byte; a handful of demoscene effects abuse that.
 - **Border effects** (per-pixel border changes, the famous loading stripes)
   render at video-line granularity from the last written value, not per
   T-state.
-- **EAR is a constant** -- there is no tape input (yet).

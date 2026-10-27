@@ -30,7 +30,6 @@ module zx_tape_lib (
     input  wire        ce_cpu,               // 3.5 MHz T-state tick
 
     input  wire        tape_load,            // pulse: the ROM entered LD-BYTES
-    input  wire        auto_play,            // DIP5: roll without waiting
 
     // the page's commands (pulses from zx_input)
     input  wire        cmd_list,
@@ -83,9 +82,7 @@ module zx_tape_lib (
     // to the rest of the machine
     output wire        ear,
     output wire        playing,
-    output wire        card_ok,
-    output wire [6:0]  vol,          // ZXCONFIG.TXT's VOL=, percent (5 by default)
-    output wire        busy
+    output wire [6:0]  vol           // ZXCONFIG.TXT's VOL=, percent (5 by default)
 );
     // deck states, the same numbers the page draws
     localparam [2:0] S_EMPTY = 3'd0, S_LOAD = 3'd1, S_READY = 3'd2,
@@ -249,8 +246,6 @@ module zx_tape_lib (
     // without waiting, which it takes as a zero block length (the tape's end)
     assign inst_byte     = tap_eof ? 8'h00 : rd_byte;
     assign inst_rd_empty = (rd_empty || skip_left != 24'd0) && !tap_eof;
-    assign card_ok      = fs_ok;
-    assign busy         = sd_busy | sd_loading;
 
     // past the image's last byte the player is asking for the next block's
     // length: a .TAP has no end marker, so answer 00 00 (its end of file)
@@ -427,8 +422,8 @@ module zx_tape_lib (
             // ---- the whole image is in DDR3: hold it for LOAD ""
             if (state == S_LOAD && img_ready) state <= S_READY;
 
-            // ---- play: the ROM's LD-BYTES, DIP5, or the page's button
-            if (state == S_READY && (cmd_play || (!instant_active && (tape_load || auto_play)))) begin
+            // ---- play: the ROM's LD-BYTES, or the page's button
+            if (state == S_READY && (cmd_play || (!instant_active && tape_load))) begin
                 // the head is already at the start after a load; a restart
                 // rewinds it first and starts one clock later
                 if (started) begin

@@ -172,7 +172,6 @@ module zx_input (
                         else if (rx_byte == 8'hFF)  pk <= PK_FF;
                         else if (rx_byte == 8'hFB)  pk <= PK_LIB;
                         else if (rx_byte == 8'hFA)  scr_req <= 1'b1;
-                        else if (rx_byte == 8'hFC)  ; // snapshot packet leader
                     end
                     // Both blocks below read `pk` before this edge, so the
                     // position byte is still visible here as pk transitions.

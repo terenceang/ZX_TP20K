@@ -9,7 +9,6 @@
         <File path="src/zx_input.v" type="file.verilog" enable="1"/>
         <File path="src/zx_uart_tx.v" type="file.verilog" enable="1"/>
         <File path="src/zx_video.v" type="file.verilog" enable="1"/>
-        <File path="src/zx_tv_fx.v" type="file.verilog" enable="1"/>
         <File path="src/zx_core.v" type="file.verilog" enable="1"/>
         <File path="src/zx_snap.v" type="file.verilog" enable="1"/>
         <File path="src/zx_scr_cap.v" type="file.verilog" enable="1"/>
@@ -18,8 +17,6 @@
         <File path="src/zx_top.v" type="file.verilog" enable="1"/>
         <File path="src/colorbar_gen.v" type="file.verilog" enable="1"/>
         <File path="src/tap_player.v" type="file.verilog" enable="1"/>
-        <File path="src/zx_tape_web.v" type="file.verilog" enable="1"/>
-        <File path="src/zx_tape_sd.v" type="file.verilog" enable="1"/>
         <File path="src/zx_tape_lib.v" type="file.verilog" enable="1"/>
         <File path="src/zx_tape_mem.v" type="file.verilog" enable="1"/>
         <File path="src/sd/sd_vol.v" type="file.verilog" enable="1"/>

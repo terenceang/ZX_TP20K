@@ -1,40 +1,10 @@
 // ============================================================================
-//  tape.test.js -- the virtual cassette's host side
+//  tape.test.js -- the LOAD "" macro
 // ============================================================================
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { TapePump, loadCommand, typeLoadCommand } from '../src/tape.js'
-import { TAPE_HDR } from '../src/protocol.js'
-
-test('TapePump answers a credit with one 0xFD packet', () => {
-  const p = new TapePump()
-  p.load(Uint8Array.from([0x11, 0x22]), 'x.tap')
-  const out = p.next(1)
-  assert.deepEqual(Array.from(out), [TAPE_HDR, 0x11])
-  assert.equal(p.remaining, 1)
-  assert.equal(p.total, 2)
-})
-
-test('TapePump never runs past the file and ignores spare credits', () => {
-  const p = new TapePump()
-  p.load(Uint8Array.from([1, 2, 3]))
-  const out = p.next(10)                 // more credits than bytes
-  assert.equal(out.length, 6)            // 3 bytes x 2 wire bytes
-  assert.equal(p.remaining, 0)
-  assert.equal(p.playing, false)
-  assert.equal(p.next(5).length, 0)
-})
-
-test('TapePump is empty until a file is loaded, and ejecting clears it', () => {
-  const p = new TapePump()
-  assert.equal(p.next(4).length, 0)
-  p.load(Uint8Array.from([9, 9]))
-  assert.equal(p.remaining, 2)
-  p.load(null)
-  assert.equal(p.remaining, 0)
-  assert.equal(p.next(4).length, 0)
-})
+import { loadCommand, typeLoadCommand } from '../src/tape.js'
 
 test('the load command is the J-key LOAD token, quotes, RETURN', () => {
   assert.equal(loadCommand(), 'j""\r')

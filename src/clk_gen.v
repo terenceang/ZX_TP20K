@@ -21,7 +21,6 @@
 //    * ce_48k 48 kHz -- the beeper's HDMI audio sample rate, exactly 16/9000
 // ============================================================================
 `default_nettype none
-`include "src/config.vh"
 
 module clk_gen (
     input  wire       clk_in,       // 27.0 MHz onboard oscillator (H11)
@@ -76,9 +75,7 @@ module clk_gen (
     // ------------------------------------------------------------------
     // DDR3 PLL: 27 -> 398.25 MHz (VCO 796.5 MHz), the same parameters the
     // sibling project and Sipeed's DDR3 example use for this board's IP.
-    // Only compiled in with the DDR3 block itself (src/config.vh).
     // ------------------------------------------------------------------
-`ifdef ZX_USE_DDR3
     rPLL #(
         .FCLKIN("27"), .DEVICE("GW2A-18C"),
         .IDIV_SEL(3), .FBDIV_SEL(58), .ODIV_SEL(2),
@@ -101,10 +98,6 @@ module clk_gen (
         .DUTYDA(4'b0),
         .FDLY(4'b0)
     );
-`else
-    assign ddr_memory_clk = 1'b0;
-    assign ddr_lock       = 1'b0;
-`endif
 
     // ------------------------------------------------------------------
     // 3.5 MHz CPU enable: 27 MHz * 7/54, exact.  Pulse when the accumulator

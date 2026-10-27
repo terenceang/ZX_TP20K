@@ -9,10 +9,10 @@
 //
 //  Byte stream from the board (see protocol.js):
 //
-//      0xF7 <count> { <len> <name...> <size le32> }   the list
+//      0xF7 <len> <name...> <size le32>               one library entry
+//      0xF6 <count>                                   the list has ended
 //      0xF8 <state>                                   the deck's state
 //      0xF9 <idx> <pos le24> <len le32>               the tape's position
-//      0x06                                           old web-deck credit
 //
 //  BoardFrames is a byte-at-a-time parser (the link hands over whatever
 //  arrives, split anywhere) that turns that stream into events; TapeLibrary is
@@ -20,7 +20,7 @@
 //  them without a browser.
 // ============================================================================
 
-import { LIB_ENTRY, LIB_END, DECK_STATE, TAPE_POS, TAPE_CREDIT, DECK, SCR_FRAME, SCR_BYTES } from './protocol.js'
+import { LIB_ENTRY, LIB_END, DECK_STATE, TAPE_POS, DECK, SCR_FRAME, SCR_BYTES } from './protocol.js'
 
 /** The parser's states, one per field of the frames above. */
 const S = {
@@ -79,12 +79,11 @@ export class BoardFrames {
 
   /**
    * @param {Uint8Array|number[]} bytes whatever the port delivered
-   * @returns {{ text: Uint8Array, credits: number }} the bytes that were not a
-   *          frame (the boot banner) and the count of tape credits
+   * @returns {{ text: Uint8Array }} the bytes that were not a frame (the
+   *          boot banner)
    */
   feed(bytes) {
     const text = []
-    let credits = 0
 
     for (const b of bytes) {
       switch (this.st) {
@@ -93,7 +92,6 @@ export class BoardFrames {
           else if (b === LIB_END) this.st = S.COUNT
           else if (b === DECK_STATE) this.st = S.DECK
           else if (b === TAPE_POS) this.st = S.POS_IDX
-          else if (b === TAPE_CREDIT) credits += 1
           else if (b === SCR_FRAME) {
             this.scrBuf = new Uint8Array(SCR_BYTES)
             this.scrIdx = 0
@@ -190,7 +188,7 @@ export class BoardFrames {
       }
     }
 
-    return { text: Uint8Array.from(text), credits }
+    return { text: Uint8Array.from(text) }
   }
 
 }

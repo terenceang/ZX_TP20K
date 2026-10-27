@@ -3,7 +3,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { BoardFrames, TapeLibrary, DEMO_TAPES, tapeConfig } from '../src/library.js'
 import {
-  LIB_ENTRY, LIB_END, DECK_STATE, TAPE_POS, TAPE_CREDIT, DECK, SCR_FRAME, SCR_BYTES, encodeScreenCapture, CMD_SCR_CAP,
+  LIB_ENTRY, LIB_END, DECK_STATE, TAPE_POS, DECK, SCR_FRAME, SCR_BYTES, encodeScreenCapture, CMD_SCR_CAP,
   encodeListRequest, encodeSelectTape, encodeEjectTape, encodePlayTape, LIB_CMD, LIB,
 } from '../src/protocol.js'
 
@@ -70,12 +70,11 @@ test('deck state and position frames', () => {
   ])
 })
 
-test('text and credits pass through, frames do not leak into the banner', () => {
+test('text passes through, frames do not leak into the banner', () => {
   const events = []
   const f = new BoardFrames((e) => events.push(e))
-  const { text, credits } = f.feed(Uint8Array.from([...enc('ZX Spectrum'), TAPE_CREDIT, DECK_STATE, 2, ...enc('!')]))
+  const { text } = f.feed(Uint8Array.from([...enc('ZX Spectrum'), DECK_STATE, 2, ...enc('!')]))
   assert.equal(new TextDecoder().decode(text), 'ZX Spectrum!')
-  assert.equal(credits, 1)
   assert.deepEqual(events, [{ type: 'deck', state: DECK.READY }])
 })
 

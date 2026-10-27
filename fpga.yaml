@@ -8,7 +8,6 @@ sources:
   - src/zx_input.v
   - src/zx_uart_tx.v
   - src/zx_video.v
-  - src/zx_tv_fx.v
   - src/zx_core.v
   - src/zx_snap.v
   - src/zx_scr_cap.v
@@ -17,8 +16,6 @@ sources:
   - src/zx_top.v
   - src/colorbar_gen.v
   - src/tap_player.v
-  - src/zx_tape_web.v
-  - src/zx_tape_sd.v
   - src/zx_tape_lib.v
   - src/zx_tape_mem.v
   - src/sd/sd_vol.v
@@ -37,8 +34,4 @@ sources:
 
 constraints:
   - constraints/zx.cst
-  # scripts/build.ps1 picks the .sdc that matches src/config.vh: zx.sdc when the
-  # DDR3 block is in (it constrains ddr_memory_clk and the IP's mclk), zx_lean.sdc
-  # when it is out.
   - constraints/zx.sdc
-  - constraints/zx_lean.sdc

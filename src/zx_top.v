@@ -3,20 +3,19 @@
 //
 //  HDMI out (720x480p, the ULA picture doubled to 512x384 inside its border),
 //  the 48K boots its ROM to the BASIC prompt; the keyboard is the web page
-//  over the BL702 UART (1 Mbps, web/), and the board's DDR3 is brought up
-//  with a self-test for the cores that will use it next.
+//  over the BL702 UART (1 Mbps, web/), tapes come off the microSD card into
+//  the DDR3, where the deck plays them (docs/tape-library.md).
 //
 //  Clocks, all off the 27 MHz oscillator (src/clk_gen.v):
 //      clk_pixel 27 MHz   everything ZX, and the HDMI pixel clock
 //      clk_tmds 135 MHz   the OSER10 serial clock (5 bits per pixel)
 //      ddr_memory_clk 398.25 MHz   the DDR3 IP
 //
-//  Inputs: S0/S1 (T10, active low) is the Spectrum's reset.  Everything else
-//  the machine needs arrives over the UART.
+//  Inputs: S0 (T10, active low) is the Spectrum's reset; S1/S2 the test
+//  pattern.  Everything else arrives over the UART.
 // ============================================================================
 
 `default_nettype none
-`include "src/config.vh"
 `include "src/hdmi/hdmi_defs.vh"
 
 module zx_top (
@@ -122,9 +121,9 @@ module zx_top (
     wire        halt_n, flash, key_hit, frame_tick;
 
     // ---- tape: the same player, fed from the card --------------------
-    wire tape_ear, tape_playing, tape_loaded;
+    wire tape_ear, tape_playing;
     wire tape_load;
-    wire [6:0] tape_vol;               // percent, ZXCONFIG.TXT's VOL= in the library build
+    wire [6:0] tape_vol;               // percent, ZXCONFIG.TXT's VOL=
 
     // the page's tape-library commands, out of zx_input (inside zx_core)
     wire        lib_list, lib_sel, lib_eject, lib_play, lib_pause, lib_rewind, cmd_instant, cmd_version;
@@ -133,8 +132,7 @@ module zx_top (
     wire        instant_active, inst_pop, inst_rd_empty;
     wire [7:0]  inst_byte;
 
-    // the DDR3 client port: the tape store owns it in the library build, and
-    // nothing does otherwise
+    // the DDR3 client port: the tape store owns it
     wire        ddr_go;
     wire [25:0] ddr_addr;
     wire        ddr_we;
@@ -142,9 +140,8 @@ module zx_top (
     wire [15:0] ddr_wdata, ddr_rdata;
     wire        ddr_ack, ddr_idle;
 
-`ifdef ZX_TAPE_LIB
-    // the library build: the card's tape list over the UART, the chosen tape
-    // streamed into DDR3, and the player reading it from there
+    // the card's tape list over the UART, the chosen tape streamed into
+    // DDR3, and the player reading it from there (docs/tape-library.md)
     wire        lib_tx_req, uart_tx_busy;
     wire [7:0]  urx_byte_out;
     wire        urx_valid_out;
@@ -157,7 +154,7 @@ module zx_top (
 
     zx_tape_lib u_tape (
         .clk(clk_pixel), .reset(sys_reset), .ce_cpu(ce_cpu),
-        .tape_load(tape_load), .auto_play(1'b0),
+        .tape_load(tape_load),
         .cmd_list(lib_list), .cmd_select(lib_sel), .cmd_idx(lib_idx),
         .cmd_eject(lib_eject), .cmd_play(lib_play),
         .cmd_pause(lib_pause), .cmd_rewind(lib_rewind),
@@ -171,7 +168,7 @@ module zx_top (
         .rd_count(store_rd_count),
         .tx_req(lib_tx_req), .tx_data(lib_tx_data), .tx_busy(uart_tx_busy),
         .rx_byte(urx_byte_out), .rx_valid(urx_valid_out), .card_mode(card_mode),
-        .ear(tape_ear), .playing(tape_playing), .card_ok(), .vol(tape_vol), .busy()
+        .ear(tape_ear), .playing(tape_playing), .vol(tape_vol)
     );
 
     zx_tape_mem u_store (
@@ -184,43 +181,6 @@ module zx_top (
         .rd_count(store_rd_count), .img_ready(store_img_ready), .rd_empty(store_rd_empty),
         .rd_pop(store_rd_pop), .rd_byte(store_rd_byte)
     );
-
-    assign tape_loaded = store_img_ready;
-`elsif ZX_TAPE_SD
-    assign tape_vol = 7'd5;
-    // microSD: ZXCONFIG.TXT names the tape (TAPE=TAPE.TAP); sd_vol streams it
-    wire tape_tx_req = 1'b0;
-    wire [7:0] tape_tx_data = 8'h00;
-
-    zx_tape_sd u_tape (
-        .clk(clk_pixel), .reset(sys_reset), .ce_cpu(ce_cpu),
-        .sd_miso(sd_miso), .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_cs_n(sd_cs_n),
-        .tape_load(tape_load), .auto_play(1'b0),
-        .ear(tape_ear), .playing(tape_playing),
-        .card_ok(), .tape_ok(), .busy()
-    );
-`else
-    // web cassette: 0xFD <byte> in, 0x06 credit bytes back on the UART
-    assign tape_vol = 7'd5;
-    wire        tape_valid;
-    wire [7:0]  tape_byte;
-    wire        tape_tx_req;
-    wire [7:0]  tape_tx_data;
-    wire        uart_tx_busy;
-
-    zx_tape_web u_tape (
-        .clk(clk_pixel), .reset(sys_reset), .ce_cpu(ce_cpu),
-        .tape_valid(tape_valid), .tape_byte(tape_byte),
-        .tx_req(tape_tx_req), .tx_data(tape_tx_data), .tx_busy(uart_tx_busy),
-        .tape_load(tape_load), .auto_play(1'b0),
-        .ear(tape_ear), .playing(tape_playing), .loaded(tape_loaded)
-    );
-
-    // the SOM's card slot is not used by this build
-    assign sd_clk  = 1'b0;
-    assign sd_mosi = 1'b1;
-    assign sd_cs_n = 1'b1;
-`endif
 
     wire       scr_capturing, scr_tx_req;
     wire [7:0] scr_tx_data;
@@ -347,15 +307,12 @@ module zx_top (
     endgenerate
 
     // ------------------------------------------------------------------
-    // DDR3: brought up and self-tested, with its one client port free for the
-    // cores that use it next (128K banks, storage).  Nothing in the 48K
-    // machine touches it, so it is compiled in only when asked for
-    // (src/config.vh); with it out, the DRAM is held in reset and deselected.
+    // DDR3: calibrated and self-tested; its one client port is the tape
+    // store's (zx_tape_mem).
     // ------------------------------------------------------------------
     wire ddr_ready;
     wire [31:0] ddr_diag;
 
-`ifdef ZX_USE_DDR3
     zx_ddr u_ddr (
         .clk(clk_pixel),
         .reset(sys_reset),
@@ -372,64 +329,17 @@ module zx_top (
         .DDR3_CK(DDR3_CK), .DDR3_CK_n(DDR3_CK_n), .DDR3_CKE(DDR3_CKE),
         .DDR3_nRESET(DDR3_nRESET), .DDR3_ODT(DDR3_ODT), .DDR3_DM(DDR3_DM)
     );
-`else
-    // No DDR3 block: hold the device in reset, clock stopped, chip deselected,
-    // bus released -- what a board with the DRAM fitted expects to see.
-    assign DDR3_DQ     = 16'bz;
-    assign DDR3_DQS    = 2'bz;
-    assign DDR3_DQS_n  = 2'bz;
-    assign DDR3_A      = 14'd0;
-    assign DDR3_BA     = 3'd0;
-    assign DDR3_nCS    = 1'b1;
-    assign DDR3_nRAS   = 1'b1;
-    assign DDR3_nCAS   = 1'b1;
-    assign DDR3_nWE    = 1'b1;
-    assign DDR3_CK     = 1'b0;
-    assign DDR3_CK_n   = 1'b0;
-    assign DDR3_CKE    = 1'b0;
-    assign DDR3_nRESET = 1'b0;
-    assign DDR3_ODT    = 1'b0;
-    assign DDR3_DM     = 2'd0;
-    assign ddr_ready   = 1'b1;      // LED1 reads "nothing waiting"
-    assign ddr_diag    = 32'd0;
-    assign ddr_rdata   = 16'd0;
-    assign ddr_ack     = 1'b1;
-    assign ddr_idle    = 1'b1;
-`endif
-
-`ifndef ZX_TAPE_LIB
-    assign ddr_go    = 1'b0;
-    assign ddr_addr  = 26'd0;
-    assign ddr_we    = 1'b0;
-    assign ddr_be    = 2'b11;
-    assign ddr_wdata = 16'd0;
-    // the trap reads the library's store: no library, no trap
-    assign instant_active = 1'b0;
-    assign inst_byte      = 8'h00;
-    assign inst_rd_empty  = 1'b1;
-`endif
 
     // ------------------------------------------------------------------
     // UART TX: boot banner, tape traffic, and screen capture
     // ------------------------------------------------------------------
     wire       raw_uart_tx_busy;
 
-    assign scr_tx_busy = raw_uart_tx_busy;
-`ifndef ZX_TAPE_SD
+    assign scr_tx_busy  = raw_uart_tx_busy;
     assign uart_tx_busy = scr_capturing ? 1'b1 : raw_uart_tx_busy;
-`endif
 
-    wire mux_tx_req = scr_capturing ? scr_tx_req :
-`ifdef ZX_TAPE_LIB
-                      lib_tx_req;
+    wire       mux_tx_req  = scr_capturing ? scr_tx_req  : lib_tx_req;
     wire [7:0] mux_tx_data = scr_capturing ? scr_tx_data : lib_tx_data;
-`elsif ZX_TAPE_SD
-                      1'b0;
-    wire [7:0] mux_tx_data = scr_capturing ? scr_tx_data : 8'h00;
-`else
-                      tape_tx_req;
-    wire [7:0] mux_tx_data = scr_capturing ? scr_tx_data : tape_tx_data;
-`endif
 
     zx_uart_tx u_banner (
         .clk(clk_pixel), .reset(sys_reset), .uart_tx(uart_tx),
@@ -439,7 +349,7 @@ module zx_top (
     // ------------------------------------------------------------------
     // LEDs (active low): 0 PLL, 1 DDR3 not ready, 2 CPU HALT (the editor
     // HALTs between 50 Hz interrupts, so it breathes), 3 FLASH phase,
-    // 4 lights for ~1/4 s after keyboard traffic, 5 spare
+    // 4 lights for ~1/4 s after keyboard traffic, 5 tape playing
     // ------------------------------------------------------------------
     reg [3:0] key_led_frames = 4'd0;
     always @(posedge clk_pixel) begin

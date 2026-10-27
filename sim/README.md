@@ -6,9 +6,14 @@ around them.
 | Testbench | What it proves |
 |---|---|
 | `tb_zx.v` | **the acceptance test**: the 48K ROM boots to the authentic power-on screen — the ROM's own "© 1982 Sinclair Research Ltd" glyphs in the bottom character row of an all-white display, nothing else inked, and the system variables the ROM's start-up code computes |
-| `tb_type.v` | types the web page's LOAD "" macro (web/src/zxkeys.js pacing) into the real ROM and checks the editor line and the `tape_load` pulse |
+| `tb_type.v` | types the web page's LOAD "" macro (web/src/zxkeys.js pacing) into the real ROM and checks the editor line and the `tape_load` pulse; `+instant=1` loads `data/hello_tap.hex` through the instant-load trap and checks the program autostarts |
 | `tb_video.v` | `zx_video`'s screen-file interleave: known pixel bytes at known (row, line, column) positions come out in exactly those character cells of the 720x480 frame |
-| `tb_input.v` | the web keyboard's UART: `FE <pos> <down>` chords, `FF 04`, the `FB` library commands and the tape-audio switch (`FB 41`/`FB 61`), and that anything else is ignored |
+| `tb_input.v` | the web keyboard's UART: `FE <pos> <down>` chords, `FF 04`, the `FB` library commands, the tape-audio switch (`FB 41`/`FB 61`), `FB 49 <off le24>`, that anything else is ignored, and that nothing is parsed while a snapshot packet holds the stream |
+| `tb_tape.v` | `tap_player`: every half period of pilot, sync and bits, and the byte order |
+| `tb_tape_mem.v`, `tb_mem_min.v` | the DDR3 tape store, against the behavioural DDR3 model and against a fake DDR for a fast run |
+| `tb_tape_deck.v` | the library's deck path: card bytes → DDR3 → player → EAR, decoded intact, to the end of the tape |
+| `tb_raw_bridge.v` | the raw card bridge's sector commands (`sd_raw_bridge`) |
+| `tb_scr_cap.v` | the screen capture's frame: header, status and the 6912 bytes |
 | `tb_vol.v` | `ZXCONFIG.TXT`'s `VOL=` line through `sd_vol`'s config parser (bytes forced into the parser, no card model): the default of 5, spacing, saturation at 100, and lines it must ignore |
 | `tb_ddr.v` | `zx_ddr` against the behavioural IP model: self-test, write/read-back, masked writes |
 | `tb_top.v` | the whole top level elaborates; PLLs lock; frames arrive; pixels are palette-legal; TMDS clock lane toggles |
@@ -36,7 +41,7 @@ pressed.  `tb_zx` checks exactly that, four independent ways:
 * the system variables hold the values the ROM's own instructions compute:
   `RAMTOP=0xFF57`, `DF_CC=0x4000`, `S_POSN=33/24`, `DF_CCL=0x50FC`,
   `S_POSNL=5/23`, `VARS=PROG=0x5CCB`, `E_LINE=0x5CCC`, `STKBOT=0x5CCE`,
-  `CHARS=0x3C00`, `ERR_NR=0xFF`, `DF_SZ=2`, `TV_FLAG=0x21`,
+  `CHARS=0x3C00`, `ERR_NR=0x00`, `DF_SZ=2`, `TV_FLAG=0x21`,
   `ERR_SP=0xFF50` (the editor's two pushes below the ROM's 0xFF54)
 
 and then that the captured HDMI frame carries that ink in the bottom

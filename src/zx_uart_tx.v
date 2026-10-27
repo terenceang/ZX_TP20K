@@ -18,7 +18,7 @@ module zx_uart_tx (
     input  wire       reset,
     output wire       uart_tx,    // idle high
 
-    // after the banner: one caller byte at a time (the tape's credit byte)
+    // after the banner: one caller byte at a time (library frames, captures)
     input  wire       tx_req,
     input  wire [7:0] tx_data,
     output wire       tx_busy

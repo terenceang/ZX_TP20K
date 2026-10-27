@@ -90,7 +90,7 @@ Run-Tb 'tb_data_island'  @('src/hdmi/hdmi_data_island.v', 'src/hdmi/hdmi_packet_
 Run-Tb 'tb_input'        @('src/zx_input.v')
 Run-Tb 'tb_ddr'          @('src/zx_ddr.v', 'sim/models/ddr3_model.v')
 Run-Tb 'tb_video'        @('src/zx_video.v')
-Run-Tb 'tb_tv_fx'        @('src/zx_tv_fx.v')
+Run-Tb 'tb_tv80'         @('src/z80/tv80_alu.v', 'src/z80/tv80_mcode.v', 'src/z80/tv80_reg.v', 'src/z80/tv80_core.v')
 Run-Tb 'tb_tape'         @('src/tap_player.v')
 Run-Tb 'tb_scr_cap'      @('src/zx_scr_cap.v')
 Run-Tb 'tb_raw_bridge'   @('src/sd/sd_raw_bridge.v')

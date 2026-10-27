@@ -45,43 +45,6 @@ foreach ($line in $yaml -split "`n") {
     if ($inCst -and $line -match '^\s*-\s+(\S+)') { $csts += $Matches[1].Trim() }
 }
 
-# The DDR3 block is optional (src/config.vh).  Its clocks only exist when it is
-# compiled in, so pick the matching timing constraints: the full set has
-# ddr_memory_clk and the IP's mclk, the lean one has neither.
-$cfgText = Get-Content (Join-Path $root 'src\config.vh') -Raw
-$useDdr3 = $cfgText -match '(?m)^\s*`define\s+ZX_USE_DDR3'
-if ($useDdr3) {
-    $csts = @($csts | Where-Object { $_ -notmatch 'zx_lean\.sdc$' })
-    Write-Host "== DDR3 block: in (ZX_USE_DDR3 defined)"
-} else {
-    $csts = @($csts | Where-Object { $_ -notmatch '(^|/)zx\.sdc$' })
-    Write-Host "== DDR3 block: out (ZX_USE_DDR3 not defined)"
-}
-if (-not ($csts | Where-Object { $_ -match '\.sdc$' })) {
-    throw "no .sdc selected; fpga.yaml's constraints list needs both zx.sdc and zx_lean.sdc"
-}
-
-# The DDR3 pins are still bonded to the DRAM when the block is out, so keep
-# their locations and drive them with safe static levels -- but VREF=INTERNAL
-# and the SSTL input receivers belong to the IP, and Gowin rejects VREF on a
-# pin that has no SSTL receiver.  So the lean build uses a derived .cst: the
-# same file with the DDR3 IO_PORT lines rewritten to plain LVCMOS15 in their
-# (already 1.5 V) banks.
-if (-not $useDdr3) {
-    $srcCst  = Join-Path $root 'constraints\zx.cst'
-    $leanCst = Join-Path $root 'build\gowin\zx_lean.cst'
-    Get-Content $srcCst | ForEach-Object {
-        if ($_ -match '^\s*IO_PORT\s+"DDR3_') {
-            ($_ -replace 'IO_TYPE=SSTL15D', 'IO_TYPE=LVCMOS15') `
-                -replace 'IO_TYPE=SSTL15', 'IO_TYPE=LVCMOS15' `
-                -replace '\s*VREF=INTERNAL', ''
-        } else { $_ }
-    } | Set-Content $leanCst -Encoding Ascii
-    $csts = @($csts | ForEach-Object {
-        if ($_ -match '(^|/)zx\.cst$') { 'build/gowin/zx_lean.cst' } else { $_ }
-    })
-}
-
 foreach ($d in @('build\gowin', 'build\bitstream', 'build\logs')) {
     New-Item -ItemType Directory -Force -Path (Join-Path $root $d) | Out-Null
 }

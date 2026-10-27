@@ -18,11 +18,11 @@ make load
 | LED | Meaning | Good |
 |---|---|---|
 | 0 (C13) | PLL not locked | **off** |
-| 1 (A13) | DDR3 not ready | **off** — after ~1 s of calibration in a `ZX_USE_DDR3=1` build; tied off ("ready") in the lean default build, which has no DDR3 block (see `docs/resources.md`) |
+| 1 (A13) | DDR3 not ready | **off** after ~1 s of calibration and the self-test |
 | 2 (N16) | CPU HALT | breathing — the editor HALTs between 50 Hz interrupts |
 | 3 (N14) | FLASH phase | blinking at ~1.5 Hz once BASIC is up |
 | 4 (L14) | keyboard traffic | lights for ~1/4 s after each UART key packet |
-| 5 (L16) | spare | off |
+| 5 (L16) | tape playing | off until a tape plays |
 
 ## 2. The screen
 
@@ -51,22 +51,7 @@ Symptoms:
 | Boot hangs at black | the CPU: run `tb_zx` — if the sim boots, suspect the DDR3 PLL's interference or power; if the sim fails too, it is RTL |
 | S♥ft w♥rd b♥oken per character row | an attribute fetch address (0x5800 block) |
 
-## 2b. The TV effect switches
-
-| DIP | Off | On | What you should see |
-|---|---|---|---|
-| 1 | sharp RGB | soft composite | colours bleed sideways, white stays white (try a red pixel on white) |
-| 2 | scanlines off | 25% darker | alternate raster lines slightly dimmer |
-| 4 | — | (unused — the `LOAD ""` macro lives in the web page, not the board) |
-| 5 | tape waits for `LOAD ""` | tape rolls from reset | with 5 off the deck starts when the ROM enters LOAD; with 5 on it is already running |
-
-DIP3 (E8) and DIP4 are spare.  With a tape on the card, the whole load is
-then: card in, reset, wait for the prompt, type `LOAD ""` + ENTER — on the
-Spectrum keyboard (`J`, SYMBOL SHIFT+P twice, ENTER) or with the web page's
-**LOAD ""** button.  All are 1.5 V bank inputs with pull-downs, so an unpopulated switch
-reads as off.
-
-## 2c. Colour bars and the 1 kHz tone (S1 or S2)
+## 2b. Colour bars and the 1 kHz tone (S1 or S2)
 
 Hold **S1 (T3)** or **S2 (T2)** and the HDMI output switches to a test pattern
 instead of the Spectrum: eight full-range vertical bars, a white 1-pixel border
@@ -80,12 +65,6 @@ generator, unchanged; the tone is 24 samples per half period on the 48 kHz
 strobe (1 kHz).
 
 ## 3. The DDR3
-
-The DDR3 block is **not in the default build** (`src/config.vh` has
-`ZX_USE_DDR3` commented out): nothing in the 48K machine uses it, and leaving
-it out saves 26% of the logic, 58% of the registers, 8 BSRAMs and the tightest
-timing path — see `docs/resources.md`.  Define `ZX_USE_DDR3` and rebuild for
-the checks below; in the lean build LED 1 is simply off.
 
 LED 1 off means the wrapper's self-test passed (calibration + patterned
 burst + masked write).  This board's DDR3 is picky about IP generation: this
@@ -101,28 +80,15 @@ the SOM, check the DDR3 balls against Sipeed's example.
 
 ## 3b. The tape
 
-The default build plays a tape off the microSD card.  Format the card FAT32 and
-put two files in the root:
+Format a microSD card FAT32 and copy a `.TAP` into the root (8.3 name, one
+contiguous file: a fresh copy to an empty card is).  Connect the page: the
+library lists the card's files about a second after reset.  Load a tape (the
+row's ▶), wait for the deck to say *ready*, then press `LOAD ""` on the deck —
+the tape rolls when the ROM enters `LD-BYTES`, and LED5 is on while it plays.
+**Instant** loads it in a second or two instead.
 
-```
-ZXCONFIG.TXT     containing:  TAPE=TAPE.TAP
-TAPE.TAP         the tape image (8.3 name, under 1 MB)
-```
-
-Then reset the board, wait for the ZX prompt, and type `LOAD ""` + ENTER: the
-deck starts *on that keypress* (the board watches the ROM enter LD-BYTES), so
-the leader tone always begins when the Spectrum is listening.  LED5 is on while
-it plays.  With DIP5 ON it rolls from reset instead.
-
-Checks, in order: LED5 or not; that the card mounted at all (a FAT32 volume with
-the config in the root); that `ZXCONFIG.TXT` says `TAPE=` with an 8.3 name; that
-the file is one contiguous run of clusters (a file freshly copied to an empty
-card is; one that has been appended to may not be — the sibling project's
-`web/src/fat32.js` can reorganise it).
-
-To use the web instead, comment out `ZX_TAPE_SD` in `src/config.vh`: the page
-then grows a **Load tape (.tap)** button that feeds the same player over the
-keyboard's UART and types `LOAD ""` for you.
+If the list stays on *waiting for the card*, or a Load ends in *error*, see
+*If it does not load* in `docs/tape-library.md`.
 
 ## 4. The keyboard
 

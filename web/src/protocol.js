@@ -18,14 +18,18 @@
 //                              0x48 ('H')            pause / resume
 //                              0x52 ('R')            rewind to the start, stopped
 //                              0x41/0x61 ('A'/'a')   tape audio to HDMI on/off
+//                              0x49 ('I') <off le24> instant load's hand-over
+//                              0x56 ('V')            report the version
+//      0xFA                  screen capture (src/zx_scr_cap.v)
+//      0xFC <sub> ...        snapshot packets (src/zx_snap.v)
 //      0x02 ... 'c'          raw SD card mode (src/sd/sd_raw_bridge.v)
 //
 //    board -> page
-//      0x06                  tape credit (the virtual deck's old flow control)
 //      0xF7 <len> <name…> <size le32>   one library entry
 //      0xF6 <count>                     end of the library list
 //      0xF8 <state>          deck state, see DECK below
 //      0xF9 <idx> <pos le24> <len le32>               where the tape is
+//      0xF5 <status> <6912 bytes>       a captured screen
 //      ASCII                 the boot banner
 // ============================================================================
 
@@ -40,9 +44,6 @@ export const ALL_UP = 0x04
 
 /** Leader for FB <sub> [args]: the tape library's commands. */
 export const LIB_CMD = 0xfb
-
-/** Leader for FD <byte>: one byte of a tape (the upload's payload). */
-export const TAPE_HDR = 0xfd
 
 /** Board -> page: one library entry, <len> <name…> <size le32>. */
 export const LIB_ENTRY = 0xf7
@@ -64,10 +65,6 @@ export const SCR_FRAME = 0xf5
 
 /** ZX Spectrum screen size: 6144 bitmap + 768 attribute bytes = 6912. */
 export const SCR_BYTES = 6912
-export const SCR_BITMAP_BYTES = 6144
-export const SCR_ATTR_BYTES = 768
-export const SCR_WIDTH = 256
-export const SCR_HEIGHT = 192
 
 /** Deck states, as the board reports them. */
 export const DECK = {
@@ -201,9 +198,6 @@ export function encodeSnapExecute() {
 export function encodeScreenCapture() {
   return Uint8Array.from([CMD_SCR_CAP])
 }
-
-/** The FPGA's credit byte, for the web-deck build. */
-export const TAPE_CREDIT = 0x06
 
 
 /** What the FPGA prints once, after reset. serial-link.js probes for this. */
