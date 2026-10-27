@@ -1,10 +1,15 @@
 // ============================================================================
 //  scripts/update-version.mjs -- update version across firmware and web companion
 //
-//  Reads git commit count and hash, then updates:
+//  The version is 1.0.<git commit count>; it updates:
 //    - src/version.vh           (Verilog firmware version macro)
 //    - web/src/version.json     (Web companion version data)
 //    - web/package.json         (npm package version)
+//
+//  The build (scripts/build.ps1, npm prebuild) runs it for HEAD; the
+//  pre-commit hook (.githooks/pre-commit) runs it with --next for the commit
+//  being made.  Both write the same number, so a build leaves the tree clean.
+//  No hash: a commit cannot contain its own.
 // ============================================================================
 
 import { execSync } from 'node:child_process'
@@ -14,26 +19,28 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
+const NEXT = process.argv.includes('--next')
 
 const gitPath = 'C:\\Program Files\\Git\\cmd\\git.exe'
 
 function getGitInfo() {
+  const now = new Date()
+  const today = new Date(now - now.getTimezoneOffset() * 60000).toISOString().slice(0, 10)
   try {
     const git = (cmd) => execSync(`"${gitPath}" ${cmd}`, { cwd: ROOT }).toString().trim()
-    const hash = git('rev-parse --short HEAD')
-    const count = git('rev-list --count HEAD')
-    const date = git('log -1 --format=%cd --date=short')
-    return { hash, count, date }
+    const count = Number(git('rev-list --count HEAD'))
+    if (NEXT) return { count: count + 1, date: today }
+    return { count, date: git('log -1 --format=%cd --date=short') }
   } catch {
-    return { hash: '0000000', count: '1', date: new Date().toISOString().slice(0, 10) }
+    return { count: 1, date: today }   // no commits yet
   }
 }
 
-const { hash, count, date } = getGitInfo()
+const { count, date } = getGitInfo()
 const version = `1.0.${count}`
-const display = `v${version} (${hash})`
-const fwRaw = `\r\nFW:v${version} (${hash})\r\n`
-const fwStr = `\\015\\012FW:v${version} (${hash})\\015\\012`
+const display = `v${version}`
+const fwRaw = `\r\nFW:v${version}\r\n`
+const fwStr = `\\015\\012FW:v${version}\\015\\012`
 const fwLen = Buffer.byteLength(fwRaw, 'ascii')
 
 // 1. src/version.vh
@@ -52,7 +59,7 @@ writeFileSync(vhPath, vhContent, 'utf-8')
 
 // 2. web/src/version.json
 const jsonPath = resolve(ROOT, 'web/src/version.json')
-const jsonContent = JSON.stringify({ version, commit: hash, date, display }, null, 2) + '\n'
+const jsonContent = JSON.stringify({ version, date, display }, null, 2) + '\n'
 writeFileSync(jsonPath, jsonContent, 'utf-8')
 
 // 3. web/package.json

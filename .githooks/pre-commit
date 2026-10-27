@@ -1,0 +1,4 @@
+#!/bin/sh
+# Stamp the version of the commit being made (1.0.<count after it>).
+node scripts/update-version.mjs --next
+git add web/src/version.json src/version.vh web/package.json 2>/dev/null || true
