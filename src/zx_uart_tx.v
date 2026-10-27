@@ -42,8 +42,8 @@ module zx_uart_tx (
                 5'd12: banner = "m";       5'd13: banner = " ";
                 5'd14: banner = "2";       5'd15: banner = "0";
                 5'd16: banner = "K";       5'd17: banner = " ";
-                5'd18: banner = "]";       5'd19: banner = "\r";
-                5'd20: banner = "\n";
+                5'd18: banner = "]";       5'd19: banner = 8'h0D; // CR ("\r" is not a Verilog escape)
+                5'd20: banner = 8'h0A;     // LF
                 default: banner = 8'd0;
             endcase
         end else begin

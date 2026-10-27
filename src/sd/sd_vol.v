@@ -350,6 +350,9 @@ module sd_vol #(
     endtask
     task fin; begin sd_cs_n <= 1'b1; st <= IDLE; jdone <= inited; end endtask
     task die;
+        // a raw read that failed still has to answer, or the debugger waits
+        // for a payload that is never coming
+        if (jk == J_RAW) begin r_done <= 1'b1; r_ok <= 1'b0; end
         if (inited && ph == CMD18) begin
             // a run that failed part way: stop the card streaming first, or it
             // answers nothing else until it is power-cycled
@@ -879,15 +882,14 @@ module sd_vol #(
                 // the flush looks at each drive in turn
                 if (!fs_go) fs_drv <= ~fs_drv;
             end else begin
+                // A list request that arrives mid-job is answered here; a raw
+                // read (r_req) stays latched instead, as in apple2e, so the
+                // dispatch below runs it once the card is free.  Dropping it
+                // answered r_done with r_ok = 0 for a read that never ran.
                 if (lib_req) begin
                     lib_req  <= 1'b0;
                     lib_done <= 1'b1;
                     lmode    <= 2'd0;
-                end
-                if (r_req) begin
-                    r_req  <= 1'b0;
-                    r_done <= 1'b1;
-                    r_ok   <= 1'b0;
                 end
             end
             default: ;

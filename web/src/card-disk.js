@@ -95,7 +95,11 @@ export class LinkStreamReader {
   }
 
   async readAck(timeoutMs = 6000) {
-    await this.waitFor(() => this.buffer.includes(ACK_BYTE), timeoutMs)
+    // A record the card refused is answered with "lost" instead of the ACK.
+    // Wait for either, so a refusal is reported instead of burning the timeout.
+    const lost = () => /lost/.test(new TextDecoder().decode(this.buffer))
+    await this.waitFor(() => this.buffer.includes(ACK_BYTE) || lost(), timeoutMs)
+    if (!this.buffer.includes(ACK_BYTE)) throw new Error('Write failed: the board reported lost bytes.')
     const idx = this.buffer.indexOf(ACK_BYTE)
     this.buffer = this.buffer.subarray(idx + 1)
   }
@@ -150,6 +154,16 @@ export async function readSectors(link, lba, count, opts = {}) {
     if (!text.includes('SECTORS')) throw new Error('The board refused the read: no SD card, or it is busy.')
     await reader.readUntil('SECTORS\r\n', timeoutMs)
     const want = count * SECTOR_BYTES
+    // A read the card refuses sends "lost" where the rest of the data would
+    // be (sd_raw_bridge.v), so watch for it as the payload arrives. Waiting
+    // for `want` bytes instead would look like a dead board for the whole
+    // timeout and name no sector.
+    const lost = new TextEncoder().encode('\r\nlost\r\n')
+    const endsLost = () =>
+      reader.buffer.length < want + lost.length &&
+      lost.every((b, i) => reader.buffer[reader.buffer.length - lost.length + i] === b)
+    await reader.waitFor(() => reader.buffer.length >= want || endsLost(), timeoutMs)
+    if (reader.buffer.length < want) throw new Error(`SD card read failed at sector ${lba} (the board reported lost).`)
     const bytes = await reader.readBytes(want, undefined, timeoutMs)
     await reader.waitFor(() => /done|lost/.test(decoder.decode(reader.buffer)), timeoutMs)
     if (decoder.decode(reader.buffer).includes('lost')) throw new Error(`SD card read failed at sector ${lba}.`)

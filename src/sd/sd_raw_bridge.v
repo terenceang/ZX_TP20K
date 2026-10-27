@@ -85,9 +85,13 @@ module sd_raw_bridge (
         if (idx >= 7'd64 && idx < 7'd64 + `FW_VER_LEN) begin
             rom_byte = VER_TEXT[8 * (`FW_VER_LEN - 7'd1 - (idx - 7'd64)) +: 8];
         end else case (idx[5:0])
-            // 0..19: \r\nH:00 S:ssss Q:00\r\n
-            6'd0:  rom_byte = "\r";
-            6'd1:  rom_byte = "\n";
+            // 0..19: CR LF "H:00 S:ssss Q:00" CR LF
+    // CR and LF are written as 8'h0D / 8'h0A, never as "\r" / "\n":
+    // Verilog-2001 has no \r escape, and Gowin emits the letter 'r' for it
+    // (Icarus happens to accept it, which is why simulation did not catch it).
+    // See apple2e serial_debugger.v, which writes \015\012 for the same reason.
+            6'd0:  rom_byte = 8'h0D;
+            6'd1:  rom_byte = 8'h0A;
             6'd2:  rom_byte = "H";
             6'd3:  rom_byte = ":";
             6'd4:  rom_byte = "0";
@@ -104,12 +108,12 @@ module sd_raw_bridge (
             6'd15: rom_byte = ":";
             6'd16: rom_byte = "0";
             6'd17: rom_byte = "0";
-            6'd18: rom_byte = "\r";
-            6'd19: rom_byte = "\n";
+            6'd18: rom_byte = 8'h0D;
+            6'd19: rom_byte = 8'h0A;
 
             // 20..30: \r\nSECTORS\r\n
-            6'd20: rom_byte = "\r";
-            6'd21: rom_byte = "\n";
+            6'd20: rom_byte = 8'h0D;
+            6'd21: rom_byte = 8'h0A;
             6'd22: rom_byte = "S";
             6'd23: rom_byte = "E";
             6'd24: rom_byte = "C";
@@ -117,12 +121,12 @@ module sd_raw_bridge (
             6'd26: rom_byte = "O";
             6'd27: rom_byte = "R";
             6'd28: rom_byte = "S";
-            6'd29: rom_byte = "\r";
-            6'd30: rom_byte = "\n";
+            6'd29: rom_byte = 8'h0D;
+            6'd30: rom_byte = 8'h0A;
 
             // 31..43: \r\nUPLOAD HD\r\n
-            6'd31: rom_byte = "\r";
-            6'd32: rom_byte = "\n";
+            6'd31: rom_byte = 8'h0D;
+            6'd32: rom_byte = 8'h0A;
             6'd33: rom_byte = "U";
             6'd34: rom_byte = "P";
             6'd35: rom_byte = "L";
@@ -132,28 +136,28 @@ module sd_raw_bridge (
             6'd39: rom_byte = " ";
             6'd40: rom_byte = "H";
             6'd41: rom_byte = "D";
-            6'd42: rom_byte = "\r";
-            6'd43: rom_byte = "\n";
+            6'd42: rom_byte = 8'h0D;
+            6'd43: rom_byte = 8'h0A;
 
             // 44..51: \r\ndone\r\n
-            6'd44: rom_byte = "\r";
-            6'd45: rom_byte = "\n";
+            6'd44: rom_byte = 8'h0D;
+            6'd45: rom_byte = 8'h0A;
             6'd46: rom_byte = "d";
             6'd47: rom_byte = "o";
             6'd48: rom_byte = "n";
             6'd49: rom_byte = "e";
-            6'd50: rom_byte = "\r";
-            6'd51: rom_byte = "\n";
+            6'd50: rom_byte = 8'h0D;
+            6'd51: rom_byte = 8'h0A;
 
             // 52..59: \r\nlost\r\n
-            6'd52: rom_byte = "\r";
-            6'd53: rom_byte = "\n";
+            6'd52: rom_byte = 8'h0D;
+            6'd53: rom_byte = 8'h0A;
             6'd54: rom_byte = "l";
             6'd55: rom_byte = "o";
             6'd56: rom_byte = "s";
             6'd57: rom_byte = "t";
-            6'd58: rom_byte = "\r";
-            6'd59: rom_byte = "\n";
+            6'd58: rom_byte = 8'h0D;
+            6'd59: rom_byte = 8'h0A;
 
             // 60: 0x06 (ACK)
             6'd60: rom_byte = 8'h06;
@@ -187,6 +191,7 @@ module sd_raw_bridge (
     reg [15:0] x_zn = 16'd0;
     reg        x_zrun = 1'b0;
     reg        r_fin = 1'b0;
+    reg        r_ok_l = 1'b0;          // r_ok as it was when the read finished
 
     task say(input [6:0] pos, input [6:0] len, input [3:0] next_st);
         begin
@@ -223,11 +228,19 @@ module sd_raw_bridge (
             x_zn        <= 16'd0;
             x_zrun      <= 1'b0;
             r_fin       <= 1'b0;
+            r_ok_l      <= 1'b0;
         end else begin
             tx_req    <= 1'b0;
             sd_x_go   <= 1'b0;
             sd_r_go   <= 1'b0;
             sd_r_take <= 1'b0;
+
+            // sd_r_done/r_ok are single-clock pulses, and "SECTORS" is still
+            // going out for ~110 us after a read is accepted: latch the reply
+            // in every state or a fast finish (a refused command, a read the
+            // card answers at once) is missed and the page waits for a payload
+            // that never comes.
+            if (sd_r_done) begin r_fin <= 1'b1; r_ok_l <= sd_r_ok; end
 
             // Global mode toggle on Ctrl+B (suppressed while an upload write is in progress)
             if (rx_valid && rx_byte == 8'h02 && state != ST_WAIT_REC && state != ST_WRITE_DATA && state != ST_WAIT_BLOCK) begin
@@ -284,7 +297,7 @@ module sd_raw_bridge (
 
                                 if (hex_cnt == 4'd1) begin
                                     hex_cnt <= 4'd0;
-                                    if (sd_busy || !sd_fs_ok) begin
+                                    if (sd_busy || sd_err || !sd_fs_ok) begin
                                         say(6'd52, 6'd8, ST_IDLE); // lost
                                     end else begin
                                         sd_r_go <= 1'b1;
@@ -301,15 +314,13 @@ module sd_raw_bridge (
                     end
 
                     ST_READ_STREAM: begin
-                        if (sd_r_done) r_fin <= 1'b1;
-
                         if (sd_r_valid && !sd_r_take && !tx_busy && !tx_req) begin
                             tx_data   <= sd_r_byte;
                             tx_req    <= 1'b1;
                             sd_r_take <= 1'b1;
                         end else if (r_fin && !sd_r_valid && !tx_busy && !tx_req) begin
-                            if (sd_r_ok) say(6'd44, 6'd8, ST_IDLE); // done
-                            else         say(6'd52, 6'd8, ST_IDLE); // lost
+                            if (r_ok_l) say(6'd44, 6'd8, ST_IDLE); // done
+                            else        say(6'd52, 6'd8, ST_IDLE); // lost
                         end
                     end
 
@@ -320,7 +331,7 @@ module sd_raw_bridge (
                                 sd_x_lba <= {sd_x_lba[27:0], hex_val(rx_byte)};
                                 if (hex_cnt == 4'd1) begin
                                     hex_cnt <= 4'd0;
-                                    if (sd_busy || !sd_fs_ok) begin
+                                    if (sd_busy || sd_err || !sd_fs_ok) begin
                                         say(6'd52, 6'd8, ST_IDLE); // lost
                                     end else begin
                                         say(6'd31, 6'd13, ST_WAIT_REC); // "\r\nUPLOAD HD\r\n"
@@ -360,6 +371,10 @@ module sd_raw_bridge (
                         if (rx_valid) begin
                             sd_x_byte  <= rx_byte;
                             sd_x_valid <= 1'b1;
+                            // the byte before this one was never taken: the rest
+                            // of the record is a byte short, so say so and stop
+                            // (serial_debugger.v does the same in X_DATA)
+                            if (sd_x_valid && !sd_x_take) say(6'd52, 6'd8, ST_IDLE); // lost
                         end
 
                         if (sd_x_take) begin
