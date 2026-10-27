@@ -54,6 +54,7 @@ module zx_input (
 
     // Raw UART stream for SD card bridge
     input  wire        card_mode,
+    input  wire        hold,         // zx_snap is inside a packet: not ours
     output wire [7:0]  rx_byte_out,
     output wire        rx_valid_out
 );
@@ -161,7 +162,7 @@ module zx_input (
             cmd_version <= 1'b0;
             scr_req     <= 1'b0;
             // ---- a byte from the host ------------------------------------
-            if (rx_valid && card_mode !== 1'b1) begin
+            if (rx_valid && card_mode !== 1'b1 && !hold) begin
                 case (pk)
                     PK_NONE: begin
                         if (rx_byte == 8'hFE)       pk <= PK_KEY_POS;
@@ -222,7 +223,7 @@ module zx_input (
 
     // The page's monitor switch: kept across S0 resets, like a deck's knob.
     always @(posedge clk)
-        if (rx_valid && card_mode !== 1'b1 && pk == PK_LIB && (rx_byte | 8'h20) == 8'h61)
+        if (rx_valid && card_mode !== 1'b1 && !hold && pk == PK_LIB && (rx_byte | 8'h20) == 8'h61)
             tape_mon <= ~rx_byte[5];
 
     assign vk_matrix = web_matrix;

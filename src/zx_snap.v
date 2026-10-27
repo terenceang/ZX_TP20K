@@ -33,7 +33,12 @@ module zx_snap (
     input  wire [15:0] cpu_addr,
     input  wire        cpu_m1_n,
     output reg         boot_active = 1'b0,
-    output wire [7:0]  boot_dout
+    output wire [7:0]  boot_dout,
+
+    // inside a packet: its bytes are RAM, registers and lengths, so the
+    // stream's other listeners (keyboard, library, card bridge) must not
+    // read them -- 02 would flip the card bridge, FB 53 select a tape
+    output wire        busy
 );
 
     localparam [3:0] S_IDLE      = 4'd0,
@@ -47,6 +52,7 @@ module zx_snap (
                      S_REG_BYTE  = 4'd8;
 
     reg [3:0]  st = S_IDLE;
+    assign busy = (st != S_IDLE);
     reg [15:0] cur_addr = 16'd0;
     reg [15:0] cur_len  = 16'd0;
     reg [4:0]  reg_idx  = 5'd0;

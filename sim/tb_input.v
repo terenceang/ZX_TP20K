@@ -20,6 +20,8 @@ module tb_input;
 
     reg reset = 1'b1;
     reg uart_rx = 1'b1;
+    reg hold = 1'b0;
+    reg [39:0] keys_before;
 
     wire [39:0] vk_matrix;
     wire        key_hit;
@@ -30,7 +32,7 @@ module tb_input;
     zx_input u_dut (
         .clk(clk), .reset(reset), .uart_rx(uart_rx),
         .vk_matrix(vk_matrix), .key_hit(key_hit),
-        .card_mode(1'b0),
+        .card_mode(1'b0), .hold(hold),
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play),
         .tape_mon(tape_mon)
@@ -155,6 +157,21 @@ module tb_input;
         send_byte(8'hFB); send_byte(8'h61); settle;
         if (tape_mon !== 1'b0) begin $display("FAIL: FB 61 tape audio off"); errors = errors + 1; end
         else if (!quiet) $display("ok: FB 41/61 tape audio");
+
+        // held (zx_snap inside a packet): snapshot bytes that look like
+        // commands -- a key, a select, an eject -- must do nothing
+        lib_clear;
+        keys_before = vk_matrix;
+        hold = 1'b1;
+        key(6'd3, 1'b1);
+        send_byte(8'hFB); send_byte(8'h53); send_byte(8'd2);
+        send_byte(8'hFB); send_byte(8'h43); settle;
+        hold = 1'b0;
+        if (saw_sel || saw_eject || vk_matrix !== keys_before) begin
+            $display("FAIL: held bytes were parsed (sel=%b eject=%b keys=%010x)",
+                     saw_sel, saw_eject, vk_matrix);
+            errors = errors + 1;
+        end else if (!quiet) $display("ok: held stream ignored");
 
         if (errors == 0) $display("PASS: zx_input");
         $finish;

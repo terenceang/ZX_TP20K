@@ -129,6 +129,8 @@ module zx_core #(
     wire        snap_border_set;
     wire        snap_boot_active;
     wire [7:0]  snap_boot_dout;
+    wire        snap_busy;    // inside an FC packet: the stream is snapshot data
+    wire        rx_valid_raw;
 
     wire port5b = (a[7:0] == 8'h5B);
     wire wait_tape_fifo = port5b && inst_rd_empty && iorq && !write && instant_active;
@@ -349,7 +351,7 @@ module zx_core #(
     zx_snap u_snap (
         .clk(clk),
         .reset(reset),
-        .rx_valid(rx_valid_out),
+        .rx_valid(rx_valid_raw),
         .rx_byte(rx_byte_out),
         .pause_cpu(snap_pause_cpu),
         .cpu_reset_req(snap_cpu_reset_req),
@@ -361,8 +363,12 @@ module zx_core #(
         .cpu_addr(a),
         .cpu_m1_n(m1_n),
         .boot_active(snap_boot_active),
-        .boot_dout(snap_boot_dout)
+        .boot_dout(snap_boot_dout),
+        .busy(snap_busy)
     );
+
+    // the card bridge downstream must not see snapshot data either
+    assign rx_valid_out = rx_valid_raw && !snap_busy;
 
     wire tape_mon;
     zx_input u_keys (
@@ -376,8 +382,9 @@ module zx_core #(
         .tape_mon(tape_mon),
         .scr_req(scr_cap_req),
         .card_mode(card_mode),
+        .hold(snap_busy),
         .rx_byte_out(rx_byte_out),
-        .rx_valid_out(rx_valid_out)
+        .rx_valid_out(rx_valid_raw)
     );
 
     // pressed keys of every row the address selects (bit low = row driven);
