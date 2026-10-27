@@ -25,13 +25,15 @@ module tb_input;
     wire        key_hit;
     wire        lib_list, lib_sel, lib_eject, lib_play;
     wire [4:0]  lib_idx;
+    wire        tape_mon;
 
     zx_input u_dut (
         .clk(clk), .reset(reset), .uart_rx(uart_rx),
         .vk_matrix(vk_matrix), .key_hit(key_hit),
         .card_mode(1'b0),
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
-        .lib_eject(lib_eject), .lib_play(lib_play)
+        .lib_eject(lib_eject), .lib_play(lib_play),
+        .tape_mon(tape_mon)
     );
 
     // the library commands are one-clock pulses: keep what was seen
@@ -146,6 +148,13 @@ module tb_input;
         send_byte(8'hFB); send_byte(8'h50); settle;
         if (!saw_play) begin $display("FAIL: FB 50 play"); errors = errors + 1; end
         else if (!quiet) $display("ok: FB 50 play");
+
+        // tape audio: a level, 'A' on, 'a' off, and a key packet leaves it be
+        send_byte(8'hFB); send_byte(8'h41); key(6'd5, 1'b1); settle;
+        if (tape_mon !== 1'b1) begin $display("FAIL: FB 41 tape audio on"); errors = errors + 1; end
+        send_byte(8'hFB); send_byte(8'h61); settle;
+        if (tape_mon !== 1'b0) begin $display("FAIL: FB 61 tape audio off"); errors = errors + 1; end
+        else if (!quiet) $display("ok: FB 41/61 tape audio");
 
         if (errors == 0) $display("PASS: zx_input");
         $finish;

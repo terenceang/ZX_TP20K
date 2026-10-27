@@ -124,6 +124,7 @@ module zx_top (
     // ---- tape: the same player, fed from the card --------------------
     wire tape_ear, tape_playing, tape_loaded;
     wire tape_load;
+    wire [6:0] tape_vol;               // percent, ZXCONFIG.TXT's VOL= in the library build
 
     // the page's tape-library commands, out of zx_input (inside zx_core)
     wire        lib_list, lib_sel, lib_eject, lib_play, lib_pause, lib_rewind, cmd_instant, cmd_version;
@@ -169,7 +170,7 @@ module zx_top (
         .rd_count(store_rd_count),
         .tx_req(lib_tx_req), .tx_data(lib_tx_data), .tx_busy(uart_tx_busy),
         .rx_byte(urx_byte_out), .rx_valid(urx_valid_out), .card_mode(card_mode),
-        .ear(tape_ear), .playing(tape_playing), .card_ok(), .busy()
+        .ear(tape_ear), .playing(tape_playing), .card_ok(), .vol(tape_vol), .busy()
     );
 
     zx_tape_mem u_store (
@@ -185,6 +186,7 @@ module zx_top (
 
     assign tape_loaded = store_img_ready;
 `elsif ZX_TAPE_SD
+    assign tape_vol = 7'd5;
     // microSD: ZXCONFIG.TXT names the tape (TAPE=TAPE.TAP); sd_vol streams it
     wire tape_tx_req = 1'b0;
     wire [7:0] tape_tx_data = 8'h00;
@@ -198,6 +200,7 @@ module zx_top (
     );
 `else
     // web cassette: 0xFD <byte> in, 0x06 credit bytes back on the UART
+    assign tape_vol = 7'd5;
     wire        tape_valid;
     wire [7:0]  tape_byte;
     wire        tape_tx_req;
@@ -239,6 +242,7 @@ module zx_top (
         .inst_byte(inst_byte),
         .inst_rd_empty(inst_rd_empty),
         .ear(tape_ear),
+        .tape_vol(tape_vol),
         .tape_load(tape_load),
         .vid_x(pixel_x),
         .vid_y(pixel_y),

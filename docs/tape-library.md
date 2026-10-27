@@ -42,6 +42,7 @@ from the computer, because the deck plays what is in it.
 | page → board | `FB 53 <idx>` | load tape *idx* into DDR3 |
 | page → board | `FB 43` | eject |
 | page → board | `FB 50` | play now, without waiting for `LOAD ""` |
+| page → board | `FB 41` / `FB 61` | tape audio to HDMI on / off (the deck's speaker button; the page remembers it and resends it on connect) |
 | page → board | `FB 57`, then `FD <byte>`…, then `FB 45` | upload a tape into the player |
 | board → page | `F7 <len> <name…> <size le32>` | one library entry |
 | board → page | `F6 <count>` | the list has ended |

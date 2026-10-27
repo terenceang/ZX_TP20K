@@ -1,7 +1,7 @@
 // Tests for the tape library's wire format and the deck's model, plain node --test.
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { BoardFrames, TapeLibrary, DEMO_TAPES } from '../src/library.js'
+import { BoardFrames, TapeLibrary, DEMO_TAPES, tapeConfig } from '../src/library.js'
 import {
   LIB_ENTRY, LIB_END, DECK_STATE, TAPE_POS, TAPE_CREDIT, DECK, SCR_FRAME, SCR_BYTES, encodeScreenCapture, CMD_SCR_CAP,
   encodeListRequest, encodeSelectTape, encodeEjectTape, encodePlayTape, LIB_CMD, LIB,
@@ -151,4 +151,10 @@ test('a second listing replaces the first instead of stacking onto it', () => {
   assert.deepEqual(lib.entries.map((e) => e.name), ['HOBBIT~1.TAP', 'SNAP.Z80'])
   f.feed(Uint8Array.from([LIB_END, 0]))         // the last tape deleted
   assert.deepEqual(lib.entries, [])
+})
+
+test('tapeConfig swaps the tape and keeps VOL=, defaulting it to 5', () => {
+  assert.equal(tapeConfig('', 'A.TAP'), 'TAPE=A.TAP\r\nVOL=5\r\n')
+  assert.equal(tapeConfig('TAPE=A.TAP\r\nVOL=20\r\n; mine\r\n', 'B.TAP'), 'TAPE=B.TAP\r\nVOL=20\r\n; mine\r\n')
+  assert.equal(tapeConfig('S6D1=A.TAP\nvol = 40\n', ''), '; no tape in the player\r\nvol = 40\r\n')
 })

@@ -47,6 +47,7 @@ module zx_input (
     output reg         lib_rewind,   // 'R'  back to the start, stopped
     output reg         cmd_instant,  // 'I'  instant load
     output reg         cmd_version,  // 'V'  query version
+    output reg         tape_mon = 1'b0, // 'A' on / 'a' off: tape audio to HDMI
 
     // Screen capture trigger: 0xFA or 0xFF 0x05
     output reg         scr_req = 1'b0,
@@ -188,7 +189,8 @@ module zx_input (
                     end
                     PK_LIB: begin
                         // 0xFB 'L' list, 'S' <idx> select, 'C' eject, 'P' play,
-                        // 'H' pause/resume, 'R' rewind, 'I' instant
+                        // 'H' pause/resume, 'R' rewind, 'I' instant, 'A'/'a'
+                        // tape audio on/off (tape_mon, below)
                         case (rx_byte)
                             8'h4C: lib_list    <= 1'b1;
                             8'h53: pk <= PK_LIB_IDX;
@@ -217,6 +219,11 @@ module zx_input (
             end
         end
     end
+
+    // The page's monitor switch: kept across S0 resets, like a deck's knob.
+    always @(posedge clk)
+        if (rx_valid && card_mode !== 1'b1 && pk == PK_LIB && (rx_byte | 8'h20) == 8'h61)
+            tape_mon <= ~rx_byte[5];
 
     assign vk_matrix = web_matrix;
     assign key_hit   = urx_valid;

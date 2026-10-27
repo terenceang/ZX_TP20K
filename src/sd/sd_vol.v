@@ -17,6 +17,8 @@
 //       then the FAT32 boot sector: sectors per cluster, the FATs, the root.
 //    2. The root directory, for ZXCONFIG.TXT (ZK tape: was A2CONFIG.TXT)
 //       format: TAPE=NAME.TAP (or S6D1=NAME.EXT), 8.3 names, ';' comments).
+//       ZX tape: VOL=<0..100> is the tape audio's level in percent of full
+//       scale (`vol`, 5 when the file or the line is missing).
 //    3. The root again, for the four names it gives.
 //    4. Each file's FAT chain must be one run (it is streamed with a single
 //       CMD18), and its size must fit the drive: a .WOZ of 1.5 KB to 1 MB for
@@ -109,6 +111,7 @@ module sd_vol #(
     output reg  [3:0]  present,        // a drive holds its file (slot 6 1-2, slot 7 1-2)
     output reg  [3:0]  fail,           // ...or the config named one that cannot be used
     output reg         fs_ok,          // the card is FAT32
+    output reg  [6:0]  vol = 7'd5,     // ZX tape: ZXCONFIG.TXT's VOL=, percent
     output wire        loading,
     output wire        busy,
     output reg         err,
@@ -262,6 +265,11 @@ module sd_vol #(
     // the config parser
     reg [2:0]  ps = P_K0;
     reg        tkey = 1'b0;             // ZX tape: the key was TAPE, not S6D1
+    // ZX tape: VOL=<digits>, parsed beside the drive keys
+    localparam [2:0] V_K0 = 0, V_K1 = 1, V_K2 = 2, V_EQ = 3, V_D = 4, V_SKIP = 7;
+    reg [2:0]  vs = V_K0;
+    reg [6:0]  vacc = 7'd0;
+    reg        vdig = 1'b0;
     reg [1:0]  pkey = 2'd0;
     reg [87:0] nb = SPACES;
     reg [3:0]  np = 4'd0;
@@ -550,6 +558,27 @@ module sd_vol #(
                               end
                           end
                           T_CFG: if ({23'd0, bcnt} < fsize[4]) begin
+                              // ZX tape: VOL=n, saturating at 100
+                              if (rxv == 8'h0A) begin
+                                  if (vs == V_D && vdig) vol <= vacc;
+                                  vs <= V_K0;
+                              end else case (vs)
+                                  V_K0: if (up_c == "V") vs <= V_K1; else if (!c_end) vs <= V_SKIP;
+                                  V_K1: vs <= (up_c == "O") ? V_K2 : V_SKIP;
+                                  V_K2: vs <= (up_c == "L") ? V_EQ : V_SKIP;
+                                  V_EQ: if (rxv == "=") begin vs <= V_D; vacc <= 7'd0; vdig <= 1'b0; end
+                                        else if (rxv != " ") vs <= V_SKIP;
+                                  V_D:  if (rxv >= "0" && rxv <= "9") begin
+                                            vdig <= 1'b1;
+                                            vacc <= (vacc > 7'd9 || vacc * 4'd10 + rxv[3:0] > 7'd100)
+                                                    ? 7'd100 : vacc * 4'd10 + rxv[3:0];
+                                        end else if (rxv == " " && !vdig) ;
+                                        else if (c_end) begin
+                                            if (vdig) vol <= vacc;
+                                            vs <= V_SKIP;
+                                        end else vs <= V_SKIP;
+                                  default: ;
+                              endcase
                               if (rxv == 8'h0A) begin
                                   if (ps == P_N0 || ps == P_N) commit_name;
                                   ps <= P_K0;
@@ -710,6 +739,7 @@ module sd_vol #(
                                 end
                                 L_CFG: begin
                                     if (ps == P_N0 || ps == P_N) commit_name;
+                                    if (vs == V_D && vdig) vol <= vacc;   // ZX tape
                                     pass <= 1'b1; dclus <= root; dir_end <= 1'b0; found[3:0] <= 4'd0;
                                     lk <= L_DIR;
                                 end
@@ -794,10 +824,11 @@ module sd_vol #(
                             if (!pass && found[4]) begin
                                 lk <= L_CFG; lk_wait <= 1'b1;
                                 ps <= P_K0; has <= 4'd0;
+                                vs <= V_K0; vol <= 7'd5;   // ZX tape: the default unless VOL= says
                                 for (i = 0; i < 4; i = i + 1) nm[i] <= SPACES;
                                 rd(cl_lba, 16'd0, T_CFG, J_LK);
                             end else begin
-                                if (!pass) has <= 4'd0;   // no config: every drive empty
+                                if (!pass) begin has <= 4'd0; vol <= 7'd5; end   // no config: every drive empty
                                 k <= 2'd0; lk <= L_DRV;
                             end
                         L_DRV:

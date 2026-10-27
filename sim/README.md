@@ -8,7 +8,8 @@ around them.
 | `tb_zx.v` | **the acceptance test**: the 48K ROM boots to the authentic power-on screen — the ROM's own "© 1982 Sinclair Research Ltd" glyphs in the bottom character row of an all-white display, nothing else inked, and the system variables the ROM's start-up code computes |
 | `tb_type.v` | types the web page's LOAD "" macro (web/src/zxkeys.js pacing) into the real ROM and checks the editor line and the `tape_load` pulse |
 | `tb_video.v` | `zx_video`'s screen-file interleave: known pixel bytes at known (row, line, column) positions come out in exactly those character cells of the 720x480 frame |
-| `tb_input.v` | the web keyboard's UART: `FE <pos> <down>` chords, `FF 04`, and that anything else is ignored |
+| `tb_input.v` | the web keyboard's UART: `FE <pos> <down>` chords, `FF 04`, the `FB` library commands and the tape-audio switch (`FB 41`/`FB 61`), and that anything else is ignored |
+| `tb_vol.v` | `ZXCONFIG.TXT`'s `VOL=` line through `sd_vol`'s config parser (bytes forced into the parser, no card model): the default of 5, spacing, saturation at 100, and lines it must ignore |
 | `tb_ddr.v` | `zx_ddr` against the behavioural IP model: self-test, write/read-back, masked writes |
 | `tb_top.v` | the whole top level elaborates; PLLs lock; frames arrive; pixels are palette-legal; TMDS clock lane toggles |
 | `tb_tv80.v` | tv80 against the strobe scheme `zx_core` uses: EXX/shadow registers, ED-group stores, indexed BIT/SET/RES on IY |

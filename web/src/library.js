@@ -440,3 +440,14 @@ export class DemoBoard {
     }
   }
 }
+
+/**
+ * ZXCONFIG.TXT with `name` as the tape in the player (none when empty): the
+ * old file's TAPE=/S6D1= lines are replaced, everything else (VOL=, comments)
+ * kept, and VOL=5 -- the board's default tape audio level -- added if absent.
+ */
+export function tapeConfig(old, name) {
+  const keep = (old || '').split(/\r?\n/).filter((l) => l.trim() && !/^\s*(TAPE|S6D1)\s*=/i.test(l) && !/^; no tape/.test(l))
+  if (!keep.some((l) => /^\s*VOL\s*=/i.test(l))) keep.push('VOL=5')
+  return [name ? `TAPE=${name}` : '; no tape in the player', ...keep].join('\r\n') + '\r\n'
+}

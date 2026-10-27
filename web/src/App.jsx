@@ -7,7 +7,7 @@ import { SerialLink, serialSupported } from './serial-link.js'
 import Keyboard from './components/Keyboard.jsx'
 import TapeCard from './components/TapeCard.jsx'
 import Screen from './components/Screen.jsx'
-import { BoardFrames, TapeLibrary, DemoBoard } from './library.js'
+import { BoardFrames, TapeLibrary, DemoBoard, tapeConfig } from './library.js'
 import { Card, cardDevice, queryCardStatus, from83 } from './card.js'
 import {
   encodeListRequest,
@@ -16,6 +16,7 @@ import {
   encodePlayTape,
   encodePauseTape,
   encodeRewindTape,
+  encodeTapeAudio,
   encodeInstantLoad,
   encodeVersionRequest,
   encodeScreenCapture,
@@ -80,6 +81,15 @@ export default function App() {
   const refreshNames = useRef(() => {})
   const demo = useRef(null)
   const [firmwareVersion, setFirmwareVersion] = useState(null)
+  const [tapeAudio, setTapeAudio] = useState(() => {
+    try {
+      return localStorage.getItem('zx_tape_audio') === '1'
+    } catch {
+      return false
+    }
+  })
+  const tapeAudioRef = useRef(tapeAudio)
+  tapeAudioRef.current = tapeAudio
 
   useEffect(() => {
     link.onState = (s) => {
@@ -91,6 +101,7 @@ export default function App() {
         setTimeout(() => link.write(encodeListRequest()), 600)
         link.write(encodeVersionRequest())
         setTimeout(() => link.write(encodeVersionRequest()), 1200)
+        link.write(encodeTapeAudio(tapeAudioRef.current))
       }
     }
 
@@ -238,8 +249,11 @@ export default function App() {
     rerender()
   }, [rerender])
 
-  const writeTapeConfig = (card, name) =>
-    card.upload('ZXCONFIG.TXT', new TextEncoder().encode(name ? `TAPE=${name}\r\n` : '; no tape in the player\r\n'))
+  const writeTapeConfig = async (card, name) => {
+    const f = await card.fs.find('ZXCONFIG.TXT')
+    const old = f ? new TextDecoder().decode(await card.download(f)) : ''
+    return card.upload('ZXCONFIG.TXT', new TextEncoder().encode(tapeConfig(old, name)))
+  }
 
   // ZXCONFIG.TXT's TAPE= is the tape in the player: the board mounts it at
   // boot (and on reset), so a load survives a power cycle.  Best effort: a
@@ -478,6 +492,12 @@ export default function App() {
         onPlay={() => (demo.current ? demo.current.play() : send(encodePlayTape()))}
         onPause={() => (demo.current ? demo.current.pause() : send(encodePauseTape()))}
         onRewind={() => (demo.current ? demo.current.rewind() : send(encodeRewindTape()))}
+        tapeAudio={tapeAudio}
+        onTapeAudio={() => {
+          send(encodeTapeAudio(!tapeAudio))
+          setTapeAudio(!tapeAudio)
+          try { localStorage.setItem('zx_tape_audio', tapeAudio ? '0' : '1') } catch {}
+        }}
         onInstantLoad={onInstantLoad}
         onTypeLoad={onTypeLoad}
         onLoadSnapshot={onLoadSnapshot}

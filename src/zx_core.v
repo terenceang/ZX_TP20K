@@ -45,6 +45,7 @@ module zx_core #(
 
     // the tape player's EAR line (1 = idle high)
     input  wire        ear,
+    input  wire [6:0]  tape_vol,     // the EAR's audio level, percent (ZXCONFIG.TXT VOL=)
 
     // the tape library's commands from the page (0xFB packets)
     output wire        lib_list,
@@ -283,6 +284,7 @@ module zx_core #(
         .boot_dout(snap_boot_dout)
     );
 
+    wire tape_mon;
     zx_input u_keys (
         .clk(clk), .reset(reset), .uart_rx(uart_rx),
         .vk_matrix(vk_matrix), .key_hit(key_hit),
@@ -291,6 +293,7 @@ module zx_core #(
         .lib_pause(lib_pause), .lib_rewind(lib_rewind),
         .cmd_instant(cmd_instant),
         .cmd_version(cmd_version),
+        .tape_mon(tape_mon),
         .scr_req(scr_cap_req),
         .card_mode(card_mode),
         .rx_byte_out(rx_byte_out),
@@ -410,6 +413,12 @@ module zx_core #(
     // Beeper -> HDMI audio: one stereo frame per 48 kHz enable, the 1-bit
     // speaker as a square wave
     // ------------------------------------------------------------------
+    // With the page's monitor switch on, the EAR is mixed in at tape_vol
+    // percent of full scale (327 a percent), as the ULA feeds EAR to the
+    // speaker; the sum saturates, since 100% plus the beeper overflows.
+    wire        [15:0] tape_amp = tape_vol * 9'd327;
+    wire signed [17:0] tape_lvl = !tape_mon ? 18'sd0 : ear ? $signed({2'b00, tape_amp}) : -$signed({2'b00, tape_amp});
+    wire signed [17:0] mix      = (beeper ? 18'sd7000 : -18'sd7000) + tape_lvl;
     reg audio_valid_r = 1'b0;
     reg [15:0] audio_lvl = -16'sd7000;
     always @(posedge clk) begin
@@ -420,7 +429,8 @@ module zx_core #(
             audio_valid_r <= 1'b0;
             if (ce_48k) begin
                 audio_valid_r <= 1'b1;
-                audio_lvl     <= beeper ? 16'sd7000 : -16'sd7000;
+                audio_lvl     <= mix > 18'sd32767  ? 16'h7FFF :
+                                 mix < -18'sd32768 ? 16'h8000 : mix[15:0];
             end
         end
     end

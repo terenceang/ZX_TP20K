@@ -83,6 +83,7 @@ module zx_tape_lib (
     output wire        ear,
     output wire        playing,
     output wire        card_ok,
+    output wire [6:0]  vol,          // ZXCONFIG.TXT's VOL=, percent (5 by default)
     output wire        busy
 );
     // deck states, the same numbers the page draws
@@ -171,7 +172,7 @@ module zx_tape_lib (
         .f_dn_go(), .f_dn_drive(), .f_dn_addr(), .f_dn_data(8'h00), .f_dn_valid(1'b0),
         .fl_wr(1'b0), .fl_wr_drv(1'b0), .fl_wr_blk(11'd0), .bg_hold(1'b1),
 
-        .present(present), .fail(fail), .fs_ok(fs_ok),
+        .present(present), .fail(fail), .fs_ok(fs_ok), .vol(vol),
         .loading(sd_loading), .busy(sd_busy), .err(sd_err), .estage(estage),
 
         .wb_go(1'b0), .wb_drv(1'b0), .wb_blk(16'd0), .rb_go(1'b0), .rb_ok(rb_ok),

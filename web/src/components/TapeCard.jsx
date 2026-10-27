@@ -54,6 +54,8 @@ export default function TapeCard({
   onPlay,
   onPause,
   onRewind,
+  tapeAudio,
+  onTapeAudio,
   onInstantLoad,
   onTypeLoad,
   onLoadSnapshot,
@@ -193,6 +195,9 @@ export default function TapeCard({
             </button>
             <button className="dk eject" onClick={onEject} disabled={!canEject} title="Eject" aria-label="Eject">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5l7.5 8.5h-15zM4.5 16h15v3h-15z" /></svg>
+            </button>
+            <button className={'dk audio' + (tapeAudio ? ' on' : '')} onClick={onTapeAudio} disabled={!connected} aria-pressed={!!tapeAudio} title="Hear the tape loading (level: VOL= in ZXCONFIG.TXT, 5% by default)" aria-label="Tape audio">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z" />{tapeAudio && <path d="M15.5 8.5a5 5 0 0 1 0 7l-1.4-1.4a3 3 0 0 0 0-4.2zM18.4 5.6a9 9 0 0 1 0 12.8L17 17a7 7 0 0 0 0-9.9z" />}</svg>
             </button>
           </div>
 

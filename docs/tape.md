@@ -29,6 +29,7 @@ apart.
 
 ```
 ZXCONFIG.TXT      TAPE=TAPE.TAP        ; S6D1=TAPE.TAP also works, ';' comments
+                  VOL=5                ; tape audio level, 0..100 % (5 if absent)
 TAPE.TAP          the tape image: 8.3 name, under 1 MB, one contiguous run
 ```
 

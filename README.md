@@ -140,7 +140,9 @@ sim\run.ps1 -Target tb_zx         # just the boot test
       sources — the **microSD card** (default; `ZXCONFIG.TXT` in the root says
       `TAPE=TAPE.TAP`, streamed by the sibling project's vendored SD/FAT32
       finder) or the **web page** (`ZX_TAPE_SD` off; the page feeds `.TAP`
-      bytes over the keyboard UART and types `LOAD ""`).- [x] Gowin build: timing clean, bitstream written
+      bytes over the keyboard UART and types `LOAD ""`).
+- [x] Tape loading sound: the deck's speaker button mixes the EAR into the
+      HDMI audio at `ZXCONFIG.TXT`'s `VOL=` (percent, 5 by default).- [x] Gowin build: timing clean, bitstream written
 - [x] Lean by default: the unused DDR3 bring-up block is compiled out of the
       48K build (logic 26% → 16%, registers 14% → 6%, BSRAM 87% → 70%,
       IOLOGIC 62% → 4%, and no thin timing margin) — one `define` in

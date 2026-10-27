@@ -17,6 +17,7 @@
 //                              0x50 ('P')            play now (skip the hold)
 //                              0x48 ('H')            pause / resume
 //                              0x52 ('R')            rewind to the start, stopped
+//                              0x41/0x61 ('A'/'a')   tape audio to HDMI on/off
 //      0x02 ... 'c'          raw SD card mode (src/sd/sd_raw_bridge.v)
 //
 //    board -> page
@@ -89,6 +90,8 @@ export const LIB = {
   REWIND: 0x52,    // 'R'
   INSTANT: 0x49,   // 'I'
   VERSION: 0x56,   // 'V'
+  AUDIO_ON: 0x41,  // 'A'
+  AUDIO_OFF: 0x61, // 'a'
 }
 
 /** Raw SD card mode (sd_raw_bridge.v): 0x02 enters, 'c' leaves. */
@@ -133,6 +136,11 @@ export function encodePauseTape() {
 /** Back to the start of the tape, stopped: LOAD "" or play starts it again. */
 export function encodeRewindTape() {
   return Uint8Array.from([LIB_CMD, LIB.REWIND])
+}
+
+/** Hear the tape through HDMI (at ZXCONFIG.TXT's VOL=, 5% by default) or not. */
+export function encodeTapeAudio(on) {
+  return Uint8Array.from([LIB_CMD, on ? LIB.AUDIO_ON : LIB.AUDIO_OFF])
 }
 
 /** Activate instant load for the loaded tape. */

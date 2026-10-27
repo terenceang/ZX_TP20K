@@ -133,7 +133,12 @@ and calls back with active-pixel coordinates.  `zx_video` answers with:
 - FLASH phase at ~1.5 Hz.
 
 HDMI audio carries the beeper: the 1-bit speaker sampled at 48 kHz into the
-audio sample packets, so `BEEP` is audible on the display's speaker.
+audio sample packets, so `BEEP` is audible on the display's speaker.  With
+the tape deck's speaker button on (`FB 41`; `FB 61` turns it off) the EAR is
+mixed in too, as the ULA feeds EAR to the real speaker, so a load sounds like
+one.  Its level is `ZXCONFIG.TXT`'s `VOL=` (percent of full scale, 5 by
+default); it scales the tape only — the beeper stays at ±7000 — and the sum
+saturates rather than wraps above about `VOL=78`.
 
 ## The television (DIP switches)
 
@@ -236,6 +241,7 @@ is full — so the file is pulled at cassette speed and never buffered in bulk.
 
 ```
 ZXCONFIG.TXT      TAPE=TAPE.TAP        (8.3 names; S6D1=TAPE.TAP also works)
+                  VOL=5                (tape audio level, 0..100 %, 5 if absent)
 TAPE.TAP          the image, under 1 MB, clusters in one run
 ```
 
