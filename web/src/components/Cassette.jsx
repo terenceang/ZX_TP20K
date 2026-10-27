@@ -61,7 +61,7 @@ export default function Cassette({ name, size = 0, pos = 0, state = DECK.EMPTY, 
         {size > 0 ? ' \u00b7 ZX Spectrum 48K' : ''}
       </text>
       <text x="326" y="64" className="label-side" textAnchor="end">
-        {state === DECK.PLAYING ? 'PLAY' : state === DECK.READY ? 'READY' : ''}
+        {state === DECK.PLAYING ? 'PLAY' : state === DECK.PAUSED ? 'PAUSE' : state === DECK.READY ? 'READY' : ''}
       </text>
 
       {/* the window and the two hubs */}

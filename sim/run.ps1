@@ -96,6 +96,7 @@ Run-Tb 'tb_scr_cap'      @('src/zx_scr_cap.v')
 Run-Tb 'tb_raw_bridge'   @('src/sd/sd_raw_bridge.v')
 Run-Tb 'tb_mem_min'      @('src/zx_tape_mem.v')
 Run-Tb 'tb_tape_mem'     @('src/zx_tape_mem.v', 'src/zx_ddr.v', 'sim/models/ddr3_model.v')
+Run-Tb 'tb_tape_deck'    @('src/zx_tape_mem.v', 'src/tap_player.v', 'src/zx_ddr.v', 'sim/models/ddr3_model.v')
 
 if (Test-Path (Join-Path $root 'roms\zx48.hex')) {
     # +fast=2 runs the CPU at 27 MHz instead of 3.5: the ROM is

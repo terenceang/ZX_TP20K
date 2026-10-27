@@ -5,7 +5,7 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { charToChord, pos, KEYS, KEY_BY_ID } from '../src/zxkeys.js'
+import { charToChord, eventToChord, pos, KEYS, KEY_BY_ID } from '../src/zxkeys.js'
 
 test('pos is row*5+col for every key, all 40 distinct', () => {
   assert.equal(KEYS.length, 40)
@@ -35,4 +35,9 @@ test('RETURN and SPACE are plain keys, unknown chars are skipped', () => {
   assert.deepEqual(charToChord('\r').keys, [{ id: 'enter', pos: pos(KEY_BY_ID.enter) }])
   assert.deepEqual(charToChord(' ').keys, [{ id: 'space', pos: pos(KEY_BY_ID.space) }])
   assert.equal(charToChord('\t'), null)
+})
+
+test('Backspace is DELETE: CAPS SHIFT + 0', () => {
+  const c = eventToChord({ code: 'Backspace', key: 'Backspace' })
+  assert.deepEqual(c.keys.map((k) => k.pos).sort((a, b) => a - b), [0, 20])
 })

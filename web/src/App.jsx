@@ -14,6 +14,8 @@ import {
   encodeSelectTape,
   encodeEjectTape,
   encodePlayTape,
+  encodePauseTape,
+  encodeRewindTape,
   encodeInstantLoad,
   encodeVersionRequest,
   encodeScreenCapture,
@@ -445,6 +447,8 @@ export default function App() {
         onLoad={onLoad}
         onEject={() => (demo.current ? demo.current.eject() : send(encodeEjectTape()))}
         onPlay={() => (demo.current ? demo.current.play() : send(encodePlayTape()))}
+        onPause={() => (demo.current ? demo.current.pause() : send(encodePauseTape()))}
+        onRewind={() => (demo.current ? demo.current.rewind() : send(encodeRewindTape()))}
         onInstantLoad={onInstantLoad}
         onTypeLoad={onTypeLoad}
         onLoadSnapshot={onLoadSnapshot}

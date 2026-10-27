@@ -52,6 +52,8 @@ module zx_core #(
     output wire [4:0]  lib_idx,
     output wire        lib_eject,
     output wire        lib_play,
+    output wire        lib_pause,
+    output wire        lib_rewind,
     output wire        cmd_instant,
     output wire        cmd_version,
 
@@ -286,6 +288,7 @@ module zx_core #(
         .vk_matrix(vk_matrix), .key_hit(key_hit),
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play),
+        .lib_pause(lib_pause), .lib_rewind(lib_rewind),
         .cmd_instant(cmd_instant),
         .cmd_version(cmd_version),
         .scr_req(scr_cap_req),
@@ -314,7 +317,7 @@ module zx_core #(
     end
 
     wire [7:0] io_dout = (io_rd && port5b) ? inst_byte :
-                         (io_rd && ula) ? {1'b1, 1'b1, ear, ~keys_c} : 8'hFF;
+                         (io_rd && ula) ? {1'b1, ear, 1'b1, ~keys_c} : 8'hFF;   // EAR is bit 6: LD-SAMPLE does RRA, AND $20
 
     // ------------------------------------------------------------------
     // The read bus

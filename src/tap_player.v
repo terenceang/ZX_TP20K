@@ -164,7 +164,8 @@ module tap_player #(
             S_FLAG: if (have_byte && !byte_taken) begin
                 byte_taken <= 1'b1;
                 fetch_want <= 1'b0;
-                bytes_left <= block_len - 16'd1;       // the flag is byte 0
+                cur_byte   <= fetched;                 // the flag goes out first:
+                bytes_left <= block_len;               // LD-BYTES reads it as byte 0
                 plen  <= 12'd2168;
                 tcnt  <= 12'd2168;
                 pcnt  <= (fetched < 8'h80) ? PILOT_HDR : PILOT_DAT;
@@ -182,8 +183,10 @@ module tap_player #(
                 st <= S_SYNC2;
             end
 
-            S_SYNC2: if (!pbusy)
-                st <= (bytes_left == 16'd0) ? S_PAUSE : S_NEXT;
+            S_SYNC2: if (!pbusy) begin
+                bitn <= 4'd8;
+                st <= S_BITS;
+            end
 
             S_NEXT: if (bytes_left == 16'd0) st <= S_PAUSE;
                     else begin fetch_want <= 1'b1; st <= S_GET; end

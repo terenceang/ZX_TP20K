@@ -55,7 +55,8 @@ export default function Keyboard({ link, connected }) {
 
   const chordUp = useCallback((chord) => {
     if (!chord || !connected) return
-    for (const k of chord.keys) release(k.id)
+    // the key before its shifts: a bare main key never shows between scans
+    for (const k of [...chord.keys].reverse()) release(k.id)
   }, [connected, release])
 
   // ---- PC keyboard --------------------------------------------------------

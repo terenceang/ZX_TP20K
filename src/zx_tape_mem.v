@@ -81,9 +81,12 @@ module zx_tape_mem (
             w_half  <= 1'b0;
             w_avail <= 1'b0;
             wr_count <= 24'd0;
-        end else if (wr_done) begin
-            w_avail <= 1'b0;
-        end else if (wr_valid && wr_ready) begin
+        end else begin
+          // a word's write finishing and the next byte arriving can share a
+          // clock: as an else-if chain that byte was dropped (every ~10th on
+          // hardware, so the tape lost its framing)
+          if (wr_done) w_avail <= 1'b0;
+          if (wr_valid && wr_ready) begin
             if (!w_half) begin
                 w_lo    <= wr_byte;
                 w_half  <= 1'b1;
@@ -103,6 +106,7 @@ module zx_tape_mem (
             w_word  <= wr_count[23:1];
             w_avail <= 1'b1;
             w_half  <= 1'b0;
+          end
         end
     end
 

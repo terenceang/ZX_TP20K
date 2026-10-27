@@ -97,7 +97,6 @@ const PC_TO_ZX = {
   Digit6: '6', Digit7: '7', Digit8: '8', Digit9: '9', Digit0: '0',
   Enter: 'enter', NumpadEnter: 'enter', Space: 'space',
   ShiftLeft: 'caps', ShiftRight: 'sym', AltRight: 'sym',
-  Backspace: 'caps',   // CAPS SHIFT+0 is DELETE on the Spectrum; plain caps at least edits
 }
 
 /** The character a PC keystroke types, as {zxKey, sym, caps}. */
@@ -118,6 +117,7 @@ const CHAR_MAP = {
  * @returns {{keys: {id: string, pos: number}[]}|null} the chord to send, or null
  */
 export function eventToChord(ev) {
+  if (ev.code === 'Backspace') return chord('0', false, true)   // DELETE is CAPS SHIFT+0
   const zxId = PC_TO_ZX[ev.code]
   if (!zxId) {
     // printable punctuation by character
@@ -171,22 +171,29 @@ export function charToChord(ch) {
 //
 //  One chord at a time: all its keys down (shift keys first), held ~45 ms --
 //  two frames of the ROM's 50 Hz keyboard scan -- then up, then a ~35 ms gap
-//  so the next chord reads as a separate press.  Translation happens here, in
-//  the page: the board only ever sees membrane contacts.
+//  so the next chord reads as a separate press.  The same chord twice in a row
+//  (the "" of LOAD "") needs longer: the ROM keeps a released key in KSTATE
+//  for 5 interrupts (100 ms) and reads a re-press inside that as the same
+//  press, so a repeat waits `repeatGapMs`.  Translation happens here, in the
+//  page: the board only ever sees membrane contacts.
 // ---------------------------------------------------------------------------
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-export async function typeText(text, send, { connected = true, holdMs = 45, gapMs = 35 } = {}) {
+export async function typeText(text, send, { connected = true, holdMs = 45, gapMs = 35, repeatGapMs = 140 } = {}) {
   if (!connected) return
+  let prev = ''
   for (const ch of text) {
     const chord = charToChord(ch)
     if (!chord) continue
+    const id = chord.keys.map((k) => k.pos).join()
+    if (id === prev) await sleep(Math.max(0, repeatGapMs - gapMs))
+    prev = id
     for (const k of chord.keys) send(encodeKey(k.pos, true))
     await sleep(holdMs)
-    for (const k of chord.keys) send(encodeKey(k.pos, false))
+    for (const k of [...chord.keys].reverse()) send(encodeKey(k.pos, false))   // key, then its shifts
     await sleep(gapMs)
   }
 }

@@ -245,7 +245,7 @@ export class TapeLibrary {
       if (ev.state === DECK.READY) {
         // the whole image is in the player: the counter starts at the head
         this.pos = 0
-        if (!this.resident) this.resident = this.len
+        this.resident = this.len   // READY means all of it: the last progress tick lags
       }
       if (ev.state === DECK.ERROR) {
         this.error = 'the card could not be read'
@@ -277,7 +277,8 @@ export class TapeLibrary {
 
   /** Is the board holding a tape the page can start? */
   get held() {
-    return this.state === DECK.READY || this.state === DECK.PLAYING || this.state === DECK.ENDED
+    return this.state === DECK.READY || this.state === DECK.PLAYING ||
+      this.state === DECK.PAUSED || this.state === DECK.ENDED
   }
 
   /** 0..1, or null while the size is unknown. */
@@ -297,6 +298,7 @@ export class TapeLibrary {
       case DECK.LOADING: return 'loading from card'
       case DECK.READY: return 'ready \u00b7 type LOAD ""'
       case DECK.PLAYING: return 'playing'
+      case DECK.PAUSED: return 'paused'
       case DECK.ENDED: return 'end of tape'
       case DECK.ERROR: return 'card error'
       default: return this.loaded < 0 ? 'no tape' : 'empty'
@@ -374,7 +376,21 @@ export class DemoBoard {
     this.set(DECK.EMPTY)
   }
 
+  pause() {
+    if (this.state === DECK.PLAYING) this.set(DECK.PAUSED)
+    else if (this.state === DECK.PAUSED) this.set(DECK.PLAYING)
+  }
+
+  rewind() {
+    if (this.idx < 0) return
+    this.pos = 0
+    this.playAt = 0
+    this._emit({ type: 'progress', idx: this.idx, pos: 0, len: this.tapes[this.idx].size })
+    this.set(DECK.READY)
+  }
+
   play() {
+    if (this.state === DECK.PAUSED) return this.set(DECK.PLAYING)
     if (this.state === DECK.READY || this.state === DECK.ENDED) {
       if (this.state === DECK.ENDED) this.pos = 0
       this.set(DECK.PLAYING)

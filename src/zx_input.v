@@ -43,6 +43,8 @@ module zx_input (
     output reg  [4:0]  lib_idx,
     output reg         lib_eject,    // 'C'
     output reg         lib_play,     // 'P'
+    output reg         lib_pause,    // 'H'  hold: pause / resume
+    output reg         lib_rewind,   // 'R'  back to the start, stopped
     output reg         cmd_instant,  // 'I'  instant load
     output reg         cmd_version,  // 'V'  query version
 
@@ -139,6 +141,8 @@ module zx_input (
             lib_sel     <= 1'b0;
             lib_eject   <= 1'b0;
             lib_play    <= 1'b0;
+            lib_pause   <= 1'b0;
+            lib_rewind  <= 1'b0;
             cmd_instant <= 1'b0;
             cmd_version <= 1'b0;
             scr_req     <= 1'b0;
@@ -150,6 +154,8 @@ module zx_input (
             lib_sel     <= 1'b0;
             lib_eject   <= 1'b0;
             lib_play    <= 1'b0;
+            lib_pause   <= 1'b0;
+            lib_rewind  <= 1'b0;
             cmd_instant <= 1'b0;
             cmd_version <= 1'b0;
             scr_req     <= 1'b0;
@@ -181,12 +187,15 @@ module zx_input (
                         pk       <= PK_NONE;
                     end
                     PK_LIB: begin
-                        // 0xFB 'L' list, 'S' <idx> select, 'C' eject, 'P' play, 'I' instant
+                        // 0xFB 'L' list, 'S' <idx> select, 'C' eject, 'P' play,
+                        // 'H' pause/resume, 'R' rewind, 'I' instant
                         case (rx_byte)
                             8'h4C: lib_list    <= 1'b1;
                             8'h53: pk <= PK_LIB_IDX;
                             8'h43: lib_eject   <= 1'b1;
                             8'h50: lib_play    <= 1'b1;
+                            8'h48: lib_pause   <= 1'b1;   // 'H'
+                            8'h52: lib_rewind  <= 1'b1;   // 'R'
                             8'h49: cmd_instant <= 1'b1;   // 'I'
                             8'h56: cmd_version <= 1'b1;   // 'V'
                             default: ;

@@ -109,7 +109,7 @@ module zx_tape_sd (
 
     always @(posedge clk) begin
         up_done <= 1'b0;
-        if (f_up_go && !f_full && start_ok) begin
+        if (f_up_go && !f_full && start_ok && !up_done) begin   // f_up_go is still up the clock after
             fifo[f_wr] <= f_up_data;
             f_wr <= f_wr + 2'd1;
             up_done <= 1'b1;                 // sd_vol drops f_up_go on this

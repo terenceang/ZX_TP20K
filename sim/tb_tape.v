@@ -89,15 +89,16 @@ module tb_tape;
     end
 
     integer i, errors = 0;
-    integer exp [0:35];
+    integer exp [0:41];
     initial begin
         // PILOT_HDR counts *half periods*: 8 of 2168, then sync, then the
         // data byte's 16 halves (2 per bit, MSB first)
         for (i = 0; i < 8; i = i + 1) exp[i] = 2168;
         exp[8] = 667;
         exp[9] = 735;
-        for (i = 0; i < 8; i = i + 1) begin
-            exp[10 + i*2]     = (8'hA5 >> (7 - i)) & 1 ? 1710 : 855;
+        // the flag (0x00) is the first byte LD-BYTES reads, then 0xA5
+        for (i = 0; i < 16; i = i + 1) begin
+            exp[10 + i*2]     = (16'h00A5 >> (15 - i)) & 1 ? 1710 : 855;
             exp[10 + i*2 + 1] = exp[10 + i*2];
         end
 
@@ -108,12 +109,12 @@ module tb_tape;
         @(posedge clk);
         start = 1'b0;
 
-        wait (npulse >= 34);
+        wait (npulse >= 42);
         repeat (50) @(posedge clk);
 
         // The pulse generator quantises to T-states, so allow a tick either
         // way -- a real cassette is percents out, not 0.1%.
-        for (i = 0; i < 34; i = i + 1) begin
+        for (i = 0; i < 42; i = i + 1) begin
             if (got[i] > exp[i] + 4 || got[i] < exp[i] - 4) begin
                 $display("FAIL: half %0d = %0d T, expected %0d", i, got[i], exp[i]);
                 errors = errors + 1;
@@ -122,7 +123,7 @@ module tb_tape;
         if (errors == 0)
             $display("PASS: tape pulse train and byte order (pilot 2168, sync 667/735, bits 855/1710, MSB first)");
         else
-            $display("FAIL: %0d of 26 half-periods wrong", errors);
+            $display("FAIL: %0d of 42 half-periods wrong", errors);
         $finish;
     end
 

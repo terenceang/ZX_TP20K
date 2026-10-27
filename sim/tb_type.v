@@ -76,16 +76,68 @@ module tb_type;
     reg saw_tape = 1'b0;
     always @(posedge clk) if (tape_load) saw_tape <= 1'b1;
 
+    // ---- instrumentation: virtual-matrix changes + the ROM's keyboard vars
+    reg [39:0] vk_prev = 40'd0;
+    always @(posedge clk) begin
+        if (!rst && u_core.vk_matrix !== vk_prev) begin
+            $display("%0t ms  vk_matrix %010x -> %010x",
+                     $time / 1000000, vk_prev, u_core.vk_matrix);
+            vk_prev <= u_core.vk_matrix;
+        end
+    end
+
+    // K0/K1 (0x5C08/09: the raw two-key scan result) and LASTK (0x5C41: the
+    // decoded key the editor consumes)
+    always @(posedge clk) begin
+        if (!rst && u_core.wr_pulse) begin
+            if (u_core.a == 16'h5C08)
+                $display("%0t ms  K0   = %02x", $time / 1000000, u_core.cpu_dout);
+            else if (u_core.a == 16'h5C09)
+                $display("%0t ms  K1   = %02x", $time / 1000000, u_core.cpu_dout);
+            else if (u_core.a == 16'h5C41)
+                $display("%0t ms  LASTK= %02x", $time / 1000000, u_core.cpu_dout);
+        end
+    end
+
+    // every ULA port read in the interesting window (address + byte given
+    // to the CPU) -- the smoking gun if KEY-SCAN runs but reads nothing
+    reg ula_rd_prev = 1'b0;
+    always @(posedge clk) begin
+        if (!rst && $time >= 340000000 && $time <= 580000000) begin
+            ula_rd_prev <= u_core.io_rd && u_core.ula;
+            if (u_core.io_rd && u_core.ula && !ula_rd_prev)
+                $display("%0t ms  ULA RD a=%04x -> %02x",
+                         $time / 1000000, u_core.a, u_core.io_dout);
+        end
+    end
+
+    // KEY-SCAN entry (0x02BB): prove the editor is actually polling the
+    // keyboard, and when
+    reg scan_prev = 1'b0;
+    always @(posedge clk) begin
+        if (!rst) begin
+            scan_prev <= (u_core.u_cpu.PC == 16'h02BB);
+            if (u_core.u_cpu.PC == 16'h02BB && !scan_prev)
+                $display("%0t ms  KEY-SCAN entered", $time / 1000000);
+        end
+    end
+
     integer quiet = 0;
     initial if (!$value$plusargs("quiet=%d", quiet)) quiet = 0;
     integer variant = 1;
     initial if (!$value$plusargs("variant=%d", variant)) variant = 1;
+    // shift the typing start (ms): on hardware the phase between keystrokes
+    // and the ROM's scan bursts drifts, so a fix must pass at every phase
+    integer phase = 0;
+    initial if (!$value$plusargs("phase=%d", phase)) phase = 0;
 
     // the page's pacing (typeText defaults, overridable for the sweep)
     integer HOLD = 45;              // ms the chord is held
     integer GAP  = 35;              // ms before the next chord
+    integer RPT  = 35;              // ms after a chord that repeats next
     initial if (!$value$plusargs("hold=%d", HOLD)) HOLD = 45;
     initial if (!$value$plusargs("gap=%d", GAP)) GAP = 35;
+    initial if (!$value$plusargs("rpt=%d", RPT)) RPT = 35;
 
     integer errors = 0;
 
@@ -118,6 +170,19 @@ module tb_type;
             #(HOLD * 1ms);
             key(p, 1'b0);
             #(GAP * 1ms);
+        end
+    endtask
+
+    // a quote chord that is followed by the SAME chord again: the page gives
+    // the ROM a longer all-up window (repeatGapMs) so a scan samples the
+    // release -- the decoder is edge-on-raw-value, and an unsampled release
+    // makes the repeat look like "still held"
+    task chord_repeat(input [5:0] shift, input [5:0] main);
+        begin
+            key(shift, 1'b1); key(main, 1'b1);
+            #(HOLD * 1ms);
+            key(shift, 1'b0); key(main, 1'b0);
+            #(RPT * 1ms);
         end
     endtask
 
@@ -196,8 +261,9 @@ module tb_type;
         repeat (200) @(posedge clk);
         rst = 1'b0;
 
-        // boot to the editor prompt (~240 ms machine time at +fast=2)
-        #280ms;
+        // boot to the editor prompt (~240 ms machine time at +fast=2), then
+        // start typing at +phase into the scan burst cycle
+        #((280 + phase) * 1ms);
         $display("-- typing the macro, variant %0d (hold %0d ms, gap %0d ms)",
                  variant, HOLD, GAP);
 
@@ -209,7 +275,7 @@ module tb_type;
             chord_v2(6'd36, 6'd25);
         end else begin
             chord_v1(6'd36, 6'd25);
-            chord_v1(6'd36, 6'd25);
+            chord_repeat(6'd36, 6'd25);      // second quote: same chord again
         end
 
         decode_line;

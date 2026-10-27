@@ -513,6 +513,7 @@ module sd_vol #(
                                           fclus[0] <= {4'h0, ec[27:0]};
                                           fsize[0] <= {rxv, es[31:8]};
                                           lhit     <= 1'b1;
+                                          lib_found <= 1'b1;    // lib_size is this entry's: the deck's img_len
                                       end
                                       lib_count <= lib_count + 1'b1;
                                   end

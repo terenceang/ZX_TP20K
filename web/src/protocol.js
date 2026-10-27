@@ -15,6 +15,8 @@
 //                              0x53 ('S') <idx>      load tape idx into DDR3
 //                              0x43 ('C')            eject
 //                              0x50 ('P')            play now (skip the hold)
+//                              0x48 ('H')            pause / resume
+//                              0x52 ('R')            rewind to the start, stopped
 //      0x02 ... 'c'          raw SD card mode (src/sd/sd_raw_bridge.v)
 //
 //    board -> page
@@ -74,6 +76,7 @@ export const DECK = {
   PLAYING: 3,    // streaming into EAR
   ENDED: 4,      // played to the end of the image
   ERROR: 5,      // the card could not be read
+  PAUSED: 6,     // held mid-tape: EAR frozen, the head where it was
 }
 
 /** Library sub-commands. */
@@ -82,6 +85,8 @@ export const LIB = {
   SELECT: 0x53,    // 'S'
   EJECT: 0x43,     // 'C'
   PLAY: 0x50,      // 'P'
+  PAUSE: 0x48,     // 'H'
+  REWIND: 0x52,    // 'R'
   INSTANT: 0x49,   // 'I'
   VERSION: 0x56,   // 'V'
 }
@@ -118,6 +123,16 @@ export function encodeEjectTape() {
 /** Start the tape now instead of waiting for the ROM's LOAD "". */
 export function encodePlayTape() {
   return Uint8Array.from([LIB_CMD, LIB.PLAY])
+}
+
+/** Hold the tape where it is; again (or play) resumes. */
+export function encodePauseTape() {
+  return Uint8Array.from([LIB_CMD, LIB.PAUSE])
+}
+
+/** Back to the start of the tape, stopped: LOAD "" or play starts it again. */
+export function encodeRewindTape() {
+  return Uint8Array.from([LIB_CMD, LIB.REWIND])
 }
 
 /** Activate instant load for the loaded tape. */

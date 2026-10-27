@@ -25,6 +25,8 @@ export default function TapeCard({
   onLoad,
   onEject,
   onPlay,
+  onPause,
+  onRewind,
   onInstantLoad,
   onTypeLoad,
   onLoadSnapshot,
@@ -38,8 +40,10 @@ export default function TapeCard({
   const canAct = connected && selected >= 0 && state !== DECK.LOADING
   const canLoad = canAct && !isSelectedZ80
   const canEject = connected && loaded >= 0
-  const canPlay = connected && (state === DECK.READY || state === DECK.ENDED)
+  const canPlay = connected && (state === DECK.READY || state === DECK.ENDED || state === DECK.PAUSED)
   const playing = state === DECK.PLAYING
+  const paused = state === DECK.PAUSED
+  const canRewind = connected && library.held
 
   const onMainAction = () => {
     if (isSelectedZ80) onLoadSnapshot(selectedEntry)
@@ -149,6 +153,21 @@ export default function TapeCard({
             spinning={playing}
           />
 
+          <div className="deck-keys" role="group" aria-label="Tape transport">
+            <button className="dk" onClick={onRewind} disabled={!canRewind} title="Rewind to the start" aria-label="Rewind">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 6v12l-8.5-6zM21 6v12l-8.5-6z" /></svg>
+            </button>
+            <button className={'dk play' + (playing ? ' on' : '')} onClick={onPlay} disabled={!canPlay} title="Play" aria-label="Play">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5v14l12-7z" /></svg>
+            </button>
+            <button className={'dk pause' + (paused ? ' on' : '')} onClick={onPause} disabled={!(playing || paused) || !connected} title={paused ? 'Resume' : 'Pause'} aria-label={paused ? 'Resume' : 'Pause'}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zM14 5h4v14h-4z" /></svg>
+            </button>
+            <button className="dk eject" onClick={onEject} disabled={!canEject} title="Eject" aria-label="Eject">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5l7.5 8.5h-15zM4.5 16h15v3h-15z" /></svg>
+            </button>
+          </div>
+
           <div className="transport">
             <button
               className={'tp ' + (isSelectedZ80 ? 'snap-load' : 'load')}
@@ -157,9 +176,6 @@ export default function TapeCard({
               title={isSelectedZ80 ? 'Restore Z80 snapshot into memory' : 'Load tape into player'}
             >
               <span className="tp-icon" aria-hidden="true">&#9660;</span> {isSelectedZ80 ? 'Restore' : 'Load'}
-            </button>
-            <button className={'tp play' + (playing ? ' on' : '')} onClick={onPlay} disabled={!canPlay}>
-              <span className="tp-icon" aria-hidden="true">&#9654;</span> Play
             </button>
             <button
               className="tp instant"
@@ -177,9 +193,6 @@ export default function TapeCard({
             >
               <span className="tp-icon" aria-hidden="true">&#9000;</span> LOAD ""
             </button>
-            <button className="tp eject" onClick={onEject} disabled={!canEject}>
-              <span className="tp-icon" aria-hidden="true">&#9632;</span> Eject
-            </button>
             <span className={'tc-state' + (state === DECK.ERROR ? ' bad' : '')}>
               {library.stateLabel}
             </span>
@@ -194,7 +207,7 @@ export default function TapeCard({
             </div>
             <span className="tc-count">
               {len
-                ? state === DECK.PLAYING || state === DECK.ENDED
+                ? state === DECK.PLAYING || state === DECK.PAUSED || state === DECK.ENDED
                   ? `${pos.toLocaleString()} of ${len.toLocaleString()} bytes played`
                   : `${library.resident.toLocaleString()} of ${len.toLocaleString()} bytes in DDR3`
                 : 'DDR3 empty'}

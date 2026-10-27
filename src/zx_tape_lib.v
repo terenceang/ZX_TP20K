@@ -19,7 +19,7 @@
 //
 //      0xF7 <len> <nameâ€¦> <size le32>   one library entry
 //      0xF6 <count>                     end of the list
-//      0xF8 <state>                     the deck's state
+//      0xF8 <state>                     the deck's state (6: paused)
 //      0xF9 <idx> <pos le24> <len le32> how far the tape has got
 // ============================================================================
 `default_nettype none
@@ -38,6 +38,8 @@ module zx_tape_lib (
     input  wire [4:0]  cmd_idx,
     input  wire        cmd_eject,
     input  wire        cmd_play,
+    input  wire        cmd_pause,            // toggle: hold the tape where it is
+    input  wire        cmd_rewind,           // back to the start, stopped (READY)
 
     // instant load commands and data interface
     input  wire        cmd_instant,
@@ -85,7 +87,7 @@ module zx_tape_lib (
 );
     // deck states, the same numbers the page draws
     localparam [2:0] S_EMPTY = 3'd0, S_LOAD = 3'd1, S_READY = 3'd2,
-                     S_PLAY = 3'd3, S_END = 3'd4, S_ERR = 3'd5;
+                     S_PLAY = 3'd3, S_END = 3'd4, S_ERR = 3'd5, S_PAUSE = 3'd6;
 
     // ==================================================================
     // The card: sd_vol in its library build
@@ -192,6 +194,9 @@ module zx_tape_lib (
     // ---- one byte at a time into the store ---------------------------
     // f_up_go stays high until f_up_done, so the accept pulse is ours to
     // make: exactly one clock per byte, and only when the store has room.
+    // sd_vol drops f_up_go the clock after it sees f_up_done, so on that
+    // clock the byte is still offered (and the store's wr_ready has not
+    // fallen after a word's first half): taking it again doubled every byte.
     reg wr_take = 1'b0;
     assign wr_valid = wr_take;
     assign wr_byte  = f_up_data;
@@ -202,7 +207,7 @@ module zx_tape_lib (
         if (reset) begin
             wr_take   <= 1'b0;
             f_up_done <= 1'b0;
-        end else if (f_up_go && wr_ready) begin
+        end else if (f_up_go && wr_ready && !f_up_done) begin
             wr_take   <= 1'b1;
             f_up_done <= 1'b1;
         end
@@ -233,12 +238,18 @@ module zx_tape_lib (
     assign card_ok      = fs_ok;
     assign busy         = sd_busy | sd_loading;
 
+    // past the image's last byte the player is asking for the next block's
+    // length: a .TAP has no end marker, so answer 00 00 (its end of file)
+    wire tap_eof = (img_len != 24'd0) && (rd_count >= img_len);
     always @(posedge clk) begin
-        if (tap_rd_req && !rd_empty) rd_hold <= rd_byte;
+        if (tap_rd_req && tap_eof)        rd_hold <= 8'h00;
+        else if (tap_rd_req && !rd_empty) rd_hold <= rd_byte;
     end
 
+    // paused: no T-states reach the player, so EAR holds its level and the
+    // head stays put; rewind restarts the player itself as well as the store
     tap_player u_player (
-        .clk(clk), .reset(reset), .ce_t(ce_cpu),
+        .clk(clk), .reset(reset | rewind_pulse), .ce_t(ce_cpu && state != S_PAUSE),
         .start(tap_start), .playing(playing),
         .idx(tap_idx), .rd_req(tap_rd_req), .rd_data(rd_hold),
         .buf_ready(!rd_empty), .sector_done(tap_sector_done),
@@ -393,6 +404,18 @@ module zx_tape_lib (
                 end
                 state <= S_PLAY;
             end
+            // ---- pause holds, play or pause again resumes
+            if (cmd_pause && state == S_PLAY)  state <= S_PAUSE;
+            if ((cmd_pause || cmd_play) && state == S_PAUSE) state <= S_PLAY;
+
+            // ---- rewind: head to the start, stopped, waiting for LOAD "" or play
+            if (cmd_rewind && (state == S_READY || state == S_PLAY ||
+                               state == S_PAUSE || state == S_END)) begin
+                rewind_pulse <= 1'b1;
+                started      <= 1'b0;
+                state        <= S_READY;
+            end
+
             if (state == S_END && cmd_play) begin
                 rewind_pulse  <= 1'b1;
                 start_pending <= 1'b1;
