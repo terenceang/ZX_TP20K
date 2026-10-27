@@ -16,6 +16,7 @@ import {
   encodePlayTape,
   encodeInstantLoad,
   encodeTypeLoad,
+  encodeVersionRequest,
   encodeScreenCapture,
   encodeSnapEnter,
   encodeSnapChunk,
@@ -24,6 +25,7 @@ import {
   encodeSnapExecute,
 } from './protocol.js'
 import { parseZ80Snapshot } from './z80-snapshot.js'
+import versionInfo from './version.json'
 
 const DEMO = typeof location !== 'undefined' && /[?&]demo=1\b/.test(location.search)
 
@@ -69,24 +71,39 @@ export default function App() {
     rerender()
   }))
   const demo = useRef(null)
+  const [firmwareVersion, setFirmwareVersion] = useState(null)
 
-  link.onState = useCallback((s) => {
-    setConn({ state: s.state, detail: s.detail })
-    // a fresh connection knows nothing about the card: ask for the library
-    if (s.state === 'open' || s.state === 'open-unverified') {
-      lib.current.clearList()
-      link.write(encodeListRequest())
-      setTimeout(() => link.write(encodeListRequest()), 600)
+  useEffect(() => {
+    link.onState = (s) => {
+      setConn({ state: s.state, detail: s.detail })
+      // a fresh connection knows nothing about the card: ask for library and FW version
+      if (s.state === 'open' || s.state === 'open-unverified') {
+        lib.current.clearList()
+        link.write(encodeListRequest())
+        setTimeout(() => link.write(encodeListRequest()), 600)
+        link.write(encodeVersionRequest())
+        setTimeout(() => link.write(encodeVersionRequest()), 1200)
+      }
+    }
+
+    link.onBytes = (bytes) => {
+      const { text } = frames.current.feed(bytes)
+      if (text.length) {
+        const t = new TextDecoder().decode(text)
+        setBanner((b) => (b + t).slice(-400))
+        const fw = /FW:\s*(v[^\r\n]+)/.exec(t)
+        if (fw) {
+          setFirmwareVersion(fw[1].trim())
+        }
+      }
     }
   }, [link])
 
-  link.onBytes = useCallback((bytes) => {
-    const { text } = frames.current.feed(bytes)
-    if (text.length) {
-      const t = new TextDecoder().decode(text)
-      setBanner((b) => (b + t).slice(-400))
+  const queryFirmware = useCallback(() => {
+    if (conn.state === 'open' || conn.state === 'open-unverified') {
+      link.write(encodeVersionRequest())
     }
-  }, [])
+  }, [conn.state, link])
 
   // ---- the demo deck, when there is no board on this machine ------------
   useEffect(() => {
@@ -409,6 +426,38 @@ export default function App() {
           {' '}<code>FB 53 &lt;idx&gt;</code> to put a tape in the player &mdash;
           see src/zx_input.v and src/zx_tape_lib.v.
         </p>
+      </footer>
+
+      <footer className="app-footer">
+        <div className="footer-item">
+          <span className="footer-label">Web Companion:</span>
+          <strong className="footer-val">{versionInfo.display}</strong>
+        </div>
+        <div className="footer-item">
+          <span
+            className={`footer-status-dot ${connected ? 'connected' : ''}`}
+            title={connected ? 'Connected' : 'Disconnected'}
+          />
+          <span className="footer-label">Bitstream (.fs):</span>
+          <strong
+            className={`footer-val ${connected ? 'clickable' : ''}`}
+            onClick={connected ? queryFirmware : undefined}
+            title={connected ? 'Click to re-query bitstream version from board' : undefined}
+          >
+            {connected ? (firmwareVersion ?? 'Detecting...') : 'Not connected'}
+          </strong>
+          {connected && (
+            <button
+              type="button"
+              className="footer-refresh-btn"
+              onClick={queryFirmware}
+              title="Re-query bitstream version from board"
+              aria-label="Refresh bitstream version"
+            >
+              ↻
+            </button>
+          )}
+        </div>
       </footer>
     </main>
   )

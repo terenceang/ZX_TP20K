@@ -41,6 +41,7 @@ module zx_tape_lib (
 
     // instant load commands and data interface
     input  wire        cmd_instant,
+    input  wire        cmd_version,
     input  wire        inst_pop,
     output wire [7:0]  inst_byte,
     output wire        inst_rd_empty,
@@ -139,6 +140,7 @@ module zx_tape_lib (
     sd_raw_bridge u_bridge (
         .clk(clk), .reset(reset),
         .rx_byte(rx_byte), .rx_valid(rx_valid),
+        .cmd_version(cmd_version),
         .card_mode(bridge_card_mode),
         .tx_req(bridge_tx_req), .tx_data(bridge_tx_data), .tx_busy(tx_busy),
         .sd_stat(sd_stat), .sd_busy(sd_busy), .sd_err(sd_err), .sd_fs_ok(fs_ok),
@@ -457,8 +459,8 @@ module zx_tape_lib (
 
     reg        lib_tx_req = 1'b0;
     reg  [7:0] lib_tx_data = 8'h00;
-    assign tx_req    = bridge_card_mode ? bridge_tx_req  : lib_tx_req;
-    assign tx_data   = bridge_card_mode ? bridge_tx_data : lib_tx_data;
+    assign tx_req    = (bridge_card_mode || bridge_tx_req) ? bridge_tx_req  : lib_tx_req;
+    assign tx_data   = (bridge_card_mode || bridge_tx_req) ? bridge_tx_data : lib_tx_data;
     assign card_mode = bridge_card_mode;
 
     always @(posedge clk) begin

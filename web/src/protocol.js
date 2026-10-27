@@ -84,6 +84,7 @@ export const LIB = {
   PLAY: 0x50,      // 'P'
   INSTANT: 0x49,   // 'I'
   TYPE_LOAD: 0x54, // 'T'
+  VERSION: 0x56,   // 'V'
   UP_BEGIN: 0x57,  // 'W' (deprecated)
   UP_END: 0x45,    // 'E' (deprecated)
 }
@@ -126,6 +127,11 @@ export function encodeInstantLoad() {
 /** Trigger the "Type LOAD \"\" + ENTER" macro. */
 export function encodeTypeLoad() {
   return Uint8Array.from([LIB_CMD, LIB.TYPE_LOAD])
+}
+
+/** Ask the board for its firmware/bitstream version. */
+export function encodeVersionRequest() {
+  return Uint8Array.from([LIB_CMD, LIB.VERSION])
 }
 
 /** Leader for Snapshot Loader packets: FC. */

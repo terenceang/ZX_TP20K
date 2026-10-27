@@ -1,6 +1,6 @@
 {
   "name": "zx-keyboard",
-  "version": "0.1.0",
+  "version": "1.0.1",
   "author": "Terence Ang",
   "license": "MIT",
   "private": true,
@@ -11,6 +11,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "prebuild": "node ../scripts/update-version.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test test/*.test.js"

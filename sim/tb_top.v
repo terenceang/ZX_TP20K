@@ -23,13 +23,9 @@ module tb_top;
     reg rst_n = 1'b0;
 
     wire [5:0] led;
-reg  sw_color_tv = 1'b0;
-wire sd_clk, sd_mosi, sd_cs_n;
-reg  sd_miso = 1'b1;   // no card: MISO idle high
-reg  btn_test_n = 1'b1, btn_test2_n = 1'b1;   // buttons not pressed
-reg  sw_scanline = 1'b0;
-reg  sw_tape_auto = 1'b0;
-reg  sw_type_load = 1'b0;
+    wire sd_clk, sd_mosi, sd_cs_n;
+    reg  sd_miso = 1'b1;   // no card: MISO idle high
+    reg  btn_test_n = 1'b1, btn_test2_n = 1'b1;   // buttons not pressed
     wire       uart_tx;
     reg        uart_rx = 1'b1;
 
@@ -51,10 +47,6 @@ reg  sw_type_load = 1'b0;
         .uart_rx(uart_rx),
         .btn_test_n(btn_test_n), .btn_test2_n(btn_test2_n),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs_n(sd_cs_n),
-        .sw_color_tv(sw_color_tv),
-        .sw_scanline(sw_scanline),
-        .sw_tape_auto(sw_tape_auto),
-        .sw_type_load(sw_type_load),
         .uart_tx(uart_tx),
         .tmds_clk_p(tmds_clk_p), .tmds_clk_n(tmds_clk_n),
         .tmds_d_p(tmds_d_p), .tmds_d_n(tmds_d_n),

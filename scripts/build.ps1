@@ -22,6 +22,12 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
 
+# Synchronize version across RTL and web companion
+$nodeExe = 'C:\Program Files\nodejs\node.exe'
+if (Test-Path $nodeExe) {
+    & $nodeExe (Join-Path $PSScriptRoot 'update-version.mjs')
+}
+
 $name = Get-FpgaName
 $gwSh = 'C:\Gowin\Gowin_V1.9.12.04_x64\IDE\bin\gw_sh.exe'
 if (-not (Test-Path $gwSh)) { throw "Gowin EDA not found at $gwSh" }

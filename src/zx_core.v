@@ -55,6 +55,7 @@ module zx_core #(
     output wire        lib_eject,
     output wire        lib_play,
     output wire        cmd_instant,
+    output wire        cmd_version,
 
     // instant load interface from zx_tape_lib
     input  wire        instant_active,
@@ -289,6 +290,7 @@ module zx_core #(
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play),
         .cmd_instant(cmd_instant),
+        .cmd_version(cmd_version),
         .scr_req(scr_cap_req),
         .card_mode(card_mode),
         .snap_busy(snap_pause_cpu),

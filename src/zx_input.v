@@ -46,6 +46,7 @@ module zx_input (
     output reg         lib_eject,    // 'C'
     output reg         lib_play,     // 'P'
     output reg         cmd_instant,  // 'I'  instant load
+    output reg         cmd_version,  // 'V'  query version
 
     // Screen capture trigger: 0xFA or 0xFF 0x05
     output reg         scr_req = 1'b0,
@@ -210,6 +211,7 @@ module zx_input (
             lib_eject   <= 1'b0;
             lib_play    <= 1'b0;
             cmd_instant <= 1'b0;
+            cmd_version <= 1'b0;
             scr_req     <= 1'b0;
             ty_trigger  <= 1'b0;
             lib_idx     <= 5'd0;
@@ -224,6 +226,7 @@ module zx_input (
             lib_eject   <= 1'b0;
             lib_play    <= 1'b0;
             cmd_instant <= 1'b0;
+            cmd_version <= 1'b0;
             scr_req     <= 1'b0;
             ty_trigger  <= 1'b0;
             // ---- a byte from the host ------------------------------------
@@ -266,6 +269,7 @@ module zx_input (
                             8'h43: lib_eject   <= 1'b1;
                             8'h50: lib_play    <= 1'b1;
                             8'h49: cmd_instant <= 1'b1;   // 'I'
+                            8'h56: cmd_version <= 1'b1;   // 'V'
                             8'h54: ty_trigger  <= 1'b1;   // 'T'
                             default: ;
                         endcase

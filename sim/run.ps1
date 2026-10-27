@@ -67,7 +67,7 @@ function Run-Tb {
 # Guard against this list drifting from fpga.yaml (the same files the build
 # compiles).
 $allSources = & (Join-Path $root 'scripts\sources.ps1')
-$core = @('src/zx_core.v', 'src/zx_scr_cap.v', 'src/zx_video.v', 'src/zx_input.v') +
+$core = @('src/zx_core.v', 'src/zx_snap.v', 'src/zx_scr_cap.v', 'src/zx_video.v', 'src/zx_input.v') +
         ($allSources | Where-Object { $_ -like 'src/z80/*' })
 $hdmi = $allSources | Where-Object { $_ -like 'src/hdmi/*' }
 

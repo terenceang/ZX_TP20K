@@ -808,3 +808,70 @@ footer code { color: var(--ink); }
   color: var(--dim);
   margin: 10px 0 0;
 }
+
+/* ======================================================================
+   App Footer: Version & Bitstream / Connection Info
+   ====================================================================== */
+.app-footer {
+  margin-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(18, 20, 24, 0.9);
+  border-top: 1px solid #262930;
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--dim, #8c8273);
+}
+
+.footer-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.footer-label {
+  color: var(--dim, #8c8273);
+}
+
+.footer-val {
+  color: var(--ink, #cfe8c4);
+  font-weight: 600;
+}
+
+.footer-val.clickable {
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.footer-refresh-btn {
+  background: transparent;
+  border: none;
+  color: var(--dim, #8c8273);
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.footer-refresh-btn:hover {
+  color: #fff;
+}
+
+.footer-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #555c66;
+  display: inline-block;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.footer-status-dot.connected {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.7);
+}

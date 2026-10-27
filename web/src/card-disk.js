@@ -102,6 +102,10 @@ export class LinkStreamReader {
 
   restore() {
     this.link.onBytes = this.prevOnBytes
+    if (this.waiter) {
+      this.waiter.reject(new Error('Operation cancelled'))
+      this.waiter = null
+    }
   }
 }
 

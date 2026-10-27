@@ -17,6 +17,7 @@
 // ============================================================================
 
 `default_nettype none
+`include "src/version.vh"
 
 module sd_raw_bridge (
     input  wire        clk,
@@ -25,6 +26,9 @@ module sd_raw_bridge (
     // UART RX stream
     input  wire [7:0]  rx_byte,
     input  wire        rx_valid,
+
+    // Query version command (e.g. 0xFB 'V' from zx_input)
+    input  wire        cmd_version,
 
     // Active status: when 1, suppresses virtual keys in zx_input
     output reg         card_mode = 1'b0,
@@ -74,9 +78,13 @@ module sd_raw_bridge (
         to_hex = (nib < 4'd10) ? ("0" + {4'd0, nib}) : ("A" + {4'd0, nib - 4'd10});
     endfunction
 
+    localparam [8*`FW_VER_LEN-1:0] VER_TEXT = `FW_VER_TEXT;
+
     // String ROM table
-    function [7:0] rom_byte(input [5:0] idx, input [15:0] stat);
-        case (idx)
+    function [7:0] rom_byte(input [6:0] idx, input [15:0] stat);
+        if (idx >= 7'd64 && idx < 7'd64 + `FW_VER_LEN) begin
+            rom_byte = VER_TEXT[8 * (`FW_VER_LEN - 7'd1 - (idx - 7'd64)) +: 8];
+        end else case (idx[5:0])
             // 0..19: \r\nH:00 S:ssss Q:00\r\n
             6'd0:  rom_byte = "\r";
             6'd1:  rom_byte = "\n";
@@ -169,8 +177,8 @@ module sd_raw_bridge (
 
     reg [3:0]  state = ST_IDLE;
     reg [3:0]  ret_state = ST_IDLE;
-    reg [5:0]  str_pos = 6'd0;
-    reg [5:0]  str_left = 6'd0;
+    reg [6:0]  str_pos = 7'd0;
+    reg [6:0]  str_left = 7'd0;
     reg [15:0] str_stat = 16'd0;
 
     reg [3:0]  hex_cnt = 4'd0;
@@ -180,7 +188,7 @@ module sd_raw_bridge (
     reg        x_zrun = 1'b0;
     reg        r_fin = 1'b0;
 
-    task say(input [5:0] pos, input [5:0] len, input [3:0] next_st);
+    task say(input [6:0] pos, input [6:0] len, input [3:0] next_st);
         begin
             str_pos   <= pos;
             str_left  <= len;
@@ -195,8 +203,8 @@ module sd_raw_bridge (
             card_mode   <= 1'b0;
             state       <= ST_IDLE;
             ret_state   <= ST_IDLE;
-            str_pos     <= 6'd0;
-            str_left    <= 6'd0;
+            str_pos     <= 7'd0;
+            str_left    <= 7'd0;
             str_stat    <= 16'd0;
             tx_req      <= 1'b0;
             tx_data     <= 8'h00;
@@ -221,8 +229,8 @@ module sd_raw_bridge (
             sd_r_go   <= 1'b0;
             sd_r_take <= 1'b0;
 
-            // Global mode toggle on Ctrl+B
-            if (rx_valid && rx_byte == 8'h02) begin
+            // Global mode toggle on Ctrl+B (suppressed while an upload write is in progress)
+            if (rx_valid && rx_byte == 8'h02 && state != ST_WAIT_REC && state != ST_WRITE_DATA && state != ST_WAIT_BLOCK) begin
                 if (!card_mode) begin
                     card_mode <= 1'b1;
                     state     <= ST_IDLE;
@@ -230,6 +238,8 @@ module sd_raw_bridge (
                     card_mode <= 1'b0;
                     state     <= ST_IDLE;
                 end
+            end else if (cmd_version && state == ST_IDLE) begin
+                say(7'd64, `FW_VER_LEN, ST_IDLE);
             end else if (card_mode) begin
                 case (state)
                     ST_IDLE: begin
@@ -238,7 +248,9 @@ module sd_raw_bridge (
                             if (rx_byte == "c" || rx_byte == "C") begin
                                 card_mode <= 1'b0;
                             end else if (rx_byte == "i" || rx_byte == "I") begin
-                                say(6'd0, 6'd20, ST_IDLE);  // "\r\nH:00 S:ssss Q:00\r\n"
+                                say(7'd0, 7'd20, ST_IDLE);  // "\r\nH:00 S:ssss Q:00\r\n"
+                            end else if (rx_byte == "v" || rx_byte == "V") begin
+                                say(7'd64, `FW_VER_LEN, ST_IDLE);  // "\r\nFW:v... (hash)\r\n"
                             end else if (rx_byte == "b" || rx_byte == "B") begin
                                 hex_cnt <= 4'd12;
                                 state   <= ST_B_HEX;
@@ -253,9 +265,9 @@ module sd_raw_bridge (
                         if (!tx_busy && !tx_req) begin
                             tx_data  <= rom_byte(str_pos, str_stat);
                             tx_req   <= 1'b1;
-                            str_pos  <= str_pos + 6'd1;
-                            str_left <= str_left - 6'd1;
-                            if (str_left == 6'd1) begin
+                            str_pos  <= str_pos + 7'd1;
+                            str_left <= str_left - 7'd1;
+                            if (str_left == 7'd1) begin
                                 state <= ret_state;
                             end
                         end
