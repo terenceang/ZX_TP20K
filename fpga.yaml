@@ -1,0 +1,44 @@
+# fpga.yaml: RTL file list and constraints, read by scripts/sources.ps1 and scripts/build.ps1
+name: zx_tp20k
+board: tang-primer-20k
+top: zx_top
+
+sources:
+  - src/clk_gen.v
+  - src/zx_input.v
+  - src/zx_uart_tx.v
+  - src/zx_video.v
+  - src/zx_tv_fx.v
+  - src/zx_core.v
+  - src/zx_snap.v
+  - src/zx_scr_cap.v
+  - src/zx_ddr.v
+  - src/ddr3_memory_interface/ddr3_memory_interface.v   # Gowin DDR3 IP, see its README
+  - src/zx_top.v
+  - src/colorbar_gen.v
+  - src/tap_player.v
+  - src/zx_tape_web.v
+  - src/zx_tape_sd.v
+  - src/zx_tape_lib.v
+  - src/zx_tape_mem.v
+  - src/sd/sd_vol.v
+  - src/sd/sd_raw_bridge.v
+  - src/sd/spi_byte.v
+  - src/z80/tv80_alu.v
+  - src/z80/tv80_mcode.v
+  - src/z80/tv80_reg.v
+  - src/z80/tv80_core.v
+  - src/hdmi/hdmi_tmds_encoder.v
+  - src/hdmi/hdmi_packet_ecc.v
+  - src/hdmi/hdmi_packets.v
+  - src/hdmi/hdmi_data_island.v
+  - src/hdmi/hdmi_island_scheduler.v
+  - src/hdmi/hdmi_tx.v
+
+constraints:
+  - constraints/zx.cst
+  # scripts/build.ps1 picks the .sdc that matches src/config.vh: zx.sdc when the
+  # DDR3 block is in (it constrains ddr_memory_clk and the IP's mclk), zx_lean.sdc
+  # when it is out.
+  - constraints/zx.sdc
+  - constraints/zx_lean.sdc

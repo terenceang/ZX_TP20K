@@ -1,0 +1,211 @@
+// ============================================================================
+//  protocol.js -- the host side of the ZX_TP20K UART protocol
+//
+//  Plain JS so `node --test` can import the exact code the browser bundles.
+//  The FPGA end is src/zx_input.v (keys) and src/zx_tape_lib.v (the tape
+//  library); the wire rate is 1 Mbps 8N1 and the board announces itself with
+//  the banner in serial-link.js's HANDSHAKE.
+//
+//    page -> board
+//      0xFE <pos> <down>     one key event: pos = ZX matrix position row*5+col
+//                            (0..39), down bit0 = pressed
+//      0xFF 0x04             all keys up (sent on blur / tab-out)
+//      0xFB <sub> [args]     the tape library
+//                              0x4C ('L')            send the list again
+//                              0x53 ('S') <idx>      load tape idx into DDR3
+//                              0x43 ('C')            eject
+//                              0x50 ('P')            play now (skip the hold)
+//      ASCII                 a single keystroke (dumb-terminal fallback)
+//
+//    board -> page
+//      0x06                  tape credit (the virtual deck's old flow control)
+//      0xF7 <len> <name…> <size le32>   one library entry
+//      0xF6 <count>                     end of the library list
+//      0xF8 <state>          deck state, see DECK below
+//      0xF9 <idx> <pos le24> <len le32>               where the tape is
+//      ASCII                 the boot banner
+// ============================================================================
+
+/** Leader for FE <pos> <down>. */
+export const KEY_HDR = 0xfe
+
+/** Leader for FF <kind>. */
+export const CMD_HDR = 0xff
+
+/** FF 04: release every key. */
+export const ALL_UP = 0x04
+
+/** Leader for FB <sub> [args]: the tape library's commands. */
+export const LIB_CMD = 0xfb
+
+/** Leader for FD <byte>: one byte of a tape (the upload's payload). */
+export const TAPE_HDR = 0xfd
+
+/** Board -> page: one library entry, <len> <name…> <size le32>. */
+export const LIB_ENTRY = 0xf7
+
+/** Board -> page: the end of the list, <count>. */
+export const LIB_END = 0xf6
+
+/** Board -> page: the deck's state. */
+export const DECK_STATE = 0xf8
+
+/** Board -> page: the tape's position in the image. */
+export const TAPE_POS = 0xf9
+
+/** Leader for screen capture request: FA. */
+export const CMD_SCR_CAP = 0xfa
+
+/** Board -> page: screen capture frame header. */
+export const SCR_FRAME = 0xf5
+
+/** ZX Spectrum screen size: 6144 bitmap + 768 attribute bytes = 6912. */
+export const SCR_BYTES = 6912
+export const SCR_BITMAP_BYTES = 6144
+export const SCR_ATTR_BYTES = 768
+export const SCR_WIDTH = 256
+export const SCR_HEIGHT = 192
+
+/** Deck states, as the board reports them. */
+export const DECK = {
+  EMPTY: 0,      // nothing in the player
+  LOADING: 1,    // card -> DDR3
+  READY: 2,      // whole image resident, held for LOAD ""
+  PLAYING: 3,    // streaming into EAR
+  ENDED: 4,      // played to the end of the image
+  ERROR: 5,      // the card could not be read
+}
+
+/** Library sub-commands. */
+export const LIB = {
+  LIST: 0x4c,      // 'L'
+  SELECT: 0x53,    // 'S'
+  EJECT: 0x43,     // 'C'
+  PLAY: 0x50,      // 'P'
+  INSTANT: 0x49,   // 'I'
+  TYPE_LOAD: 0x54, // 'T'
+  UP_BEGIN: 0x57,  // 'W' (deprecated)
+  UP_END: 0x45,    // 'E' (deprecated)
+}
+
+/** One key event. `pos` is the matrix position, `down` true to press. */
+export function encodeKey(pos, down) {
+  return Uint8Array.from([KEY_HDR, pos & 0x3f, down ? 1 : 0])
+}
+
+/** Release everything. */
+export function encodeAllUp() {
+  return Uint8Array.from([CMD_HDR, ALL_UP])
+}
+
+/** Ask the board for its library again. */
+export function encodeListRequest() {
+  return Uint8Array.from([LIB_CMD, LIB.LIST])
+}
+
+/** Put tape `idx` (0-based, in the order the board listed them) into the player. */
+export function encodeSelectTape(idx) {
+  return Uint8Array.from([LIB_CMD, LIB.SELECT, idx & 0x7f])
+}
+
+/** Empty the player. */
+export function encodeEjectTape() {
+  return Uint8Array.from([LIB_CMD, LIB.EJECT])
+}
+
+/** Start the tape now instead of waiting for the ROM's LOAD "". */
+export function encodePlayTape() {
+  return Uint8Array.from([LIB_CMD, LIB.PLAY])
+}
+
+/** Activate instant load for the loaded tape. */
+export function encodeInstantLoad() {
+  return Uint8Array.from([LIB_CMD, LIB.INSTANT])
+}
+
+/** Trigger the "Type LOAD \"\" + ENTER" macro. */
+export function encodeTypeLoad() {
+  return Uint8Array.from([LIB_CMD, LIB.TYPE_LOAD])
+}
+
+/** Leader for Snapshot Loader packets: FC. */
+export const SNAP_HDR = 0xfc
+
+/** Enter snapshot mode (pause CPU). */
+export function encodeSnapEnter() {
+  return Uint8Array.from([SNAP_HDR, 0x01])
+}
+
+/** Write RAM chunk (addr 0x0000..0xBFFF maps to Spectrum 0x4000..0xFFFF). */
+export function encodeSnapChunk(addr, data) {
+  const len = data.length
+  const out = new Uint8Array(6 + len)
+  out[0] = SNAP_HDR
+  out[1] = 0x02
+  out[2] = addr & 0xff
+  out[3] = (addr >> 8) & 0xff
+  out[4] = len & 0xff
+  out[5] = (len >> 8) & 0xff
+  out.set(data, 6)
+  return out
+}
+
+/** Set border color. */
+export function encodeSnapBorder(border) {
+  return Uint8Array.from([SNAP_HDR, 0x03, border & 0x07])
+}
+
+/** Configure CPU registers trampoline (28 bytes). */
+export function encodeSnapRegs(regs28) {
+  const out = new Uint8Array(2 + 28)
+  out[0] = SNAP_HDR
+  out[1] = 0x04
+  out.set(regs28, 2)
+  return out
+}
+
+/** Release CPU and execute trampoline to PC. */
+export function encodeSnapExecute() {
+  return Uint8Array.from([SNAP_HDR, 0x05])
+}
+
+/** Begin an upload: the player is cleared and waits for 0xFD bytes. */
+export function encodeUploadStart() {
+  return Uint8Array.from([LIB_CMD, LIB.UP_BEGIN])
+}
+
+/** The upload is complete; the board makes it ready to play. */
+export function encodeUploadEnd() {
+  return Uint8Array.from([LIB_CMD, LIB.UP_END])
+}
+
+/** One uploaded tape's bytes, as 0xFD packets, `chunk` bytes at a time. */
+export function encodeUploadBytes(bytes, chunk = 4096) {
+  const parts = []
+  for (let off = 0; off < bytes.length; off += chunk) {
+    const n = Math.min(chunk, bytes.length - off)
+    const out = new Uint8Array(n * 2)
+    for (let i = 0; i < n; i++) {
+      out[i * 2] = TAPE_HDR
+      out[i * 2 + 1] = bytes[off + i]
+    }
+    parts.push(out)
+  }
+  return parts
+}
+
+/** Request a screen capture from the board. */
+export function encodeScreenCapture() {
+  return Uint8Array.from([CMD_SCR_CAP])
+}
+
+/** The FPGA's credit byte, for the web-deck build. */
+export const TAPE_CREDIT = 0x06
+
+/** One tape byte on the wire. */
+export function encodeTapeByte(b) {
+  return Uint8Array.from([TAPE_HDR, b & 0xff])
+}
+
+/** What the FPGA prints once, after reset. serial-link.js probes for this. */
+export const HANDSHAKE = 'ZX Spectrum'

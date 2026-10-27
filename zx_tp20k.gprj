@@ -1,0 +1,41 @@
+<?xml version="1" encoding="UTF-8"?>
+<!DOCTYPE gowin-fpga-project>
+<Project>
+    <Template>FPGA</Template>
+    <Version>5</Version>
+    <Device name="GW2A-18C" pn="GW2A-LV18PG256C8/I7">gw2a18c-011</Device>
+    <FileList>
+        <File path="src/clk_gen.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_input.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_uart_tx.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_video.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_tv_fx.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_core.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_snap.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_scr_cap.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_ddr.v" type="file.verilog" enable="1"/>
+        <File path="src/ddr3_memory_interface/ddr3_memory_interface.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_top.v" type="file.verilog" enable="1"/>
+        <File path="src/colorbar_gen.v" type="file.verilog" enable="1"/>
+        <File path="src/tap_player.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_tape_web.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_tape_sd.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_tape_lib.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_tape_mem.v" type="file.verilog" enable="1"/>
+        <File path="src/sd/sd_vol.v" type="file.verilog" enable="1"/>
+        <File path="src/sd/sd_raw_bridge.v" type="file.verilog" enable="1"/>
+        <File path="src/sd/spi_byte.v" type="file.verilog" enable="1"/>
+        <File path="src/z80/tv80_alu.v" type="file.verilog" enable="1"/>
+        <File path="src/z80/tv80_mcode.v" type="file.verilog" enable="1"/>
+        <File path="src/z80/tv80_reg.v" type="file.verilog" enable="1"/>
+        <File path="src/z80/tv80_core.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/hdmi_tmds_encoder.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/hdmi_packet_ecc.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/hdmi_packets.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/hdmi_data_island.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/hdmi_island_scheduler.v" type="file.verilog" enable="1"/>
+        <File path="src/hdmi/hdmi_tx.v" type="file.verilog" enable="1"/>
+        <File path="constraints/zx.cst" type="file.cst" enable="1"/>
+        <File path="constraints/zx.sdc" type="file.sdc" enable="1"/>
+    </FileList>
+</Project>

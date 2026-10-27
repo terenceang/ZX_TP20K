@@ -1,0 +1,49 @@
+# Build outputs (bitstreams, netlists, logs)
+build/
+impl/
+*.fs
+
+# Simulation / lint artifacts
+*.vcd
+*.fst
+*.vvp
+obj_dir/
+
+# The 48K ROM: copyright, fetched by scripts/fetch-rom.ps1 (roms/README.md)
+roms/zx48.rom
+roms/zx48.hex
+roms/*.bin
+
+# Web front end
+web/node_modules/
+web/dist/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+*:Zone.Identifier
+
+# Screenshots
+*.png
+
+# Tape files (copyrighted material)
+/Tapes/
+*.tap
+*.tzx
+*.z80
+
+# Third-party vendor PDFs
+Documents/Schematics/*.pdf
+
+# Gowin logic analyzer / temporary files
+*.rao
+*.rso
+*.gprj.user
+*.log
+
+# AI tooling artifacts
+.agents/
+.claude/

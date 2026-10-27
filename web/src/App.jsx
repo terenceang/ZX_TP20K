@@ -1,0 +1,415 @@
+// ============================================================================
+//  App.jsx -- connect, then type; the tape lives on the card
+// ============================================================================
+
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { SerialLink, serialSupported } from './serial-link.js'
+import Keyboard from './components/Keyboard.jsx'
+import TapeCard from './components/TapeCard.jsx'
+import Screen from './components/Screen.jsx'
+import { BoardFrames, TapeLibrary, DemoBoard } from './library.js'
+import { Card, cardDevice, queryCardStatus } from './card.js'
+import {
+  encodeListRequest,
+  encodeSelectTape,
+  encodeEjectTape,
+  encodePlayTape,
+  encodeInstantLoad,
+  encodeTypeLoad,
+  encodeScreenCapture,
+  encodeSnapEnter,
+  encodeSnapChunk,
+  encodeSnapBorder,
+  encodeSnapRegs,
+  encodeSnapExecute,
+} from './protocol.js'
+import { parseZ80Snapshot } from './z80-snapshot.js'
+
+const DEMO = typeof location !== 'undefined' && /[?&]demo=1\b/.test(location.search)
+
+export default function App() {
+  const [link] = useState(() => new SerialLink())
+  const [conn, setConn] = useState({ state: DEMO ? 'demo' : 'auto', detail: null })
+  const [banner, setBanner] = useState('')
+  const [screen, setScreen] = useState(null)
+  const [capturing, setCapturing] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(null)
+  const [showScreen, setShowScreenState] = useState(() => {
+    try {
+      return localStorage.getItem('zx_show_screen') !== '0'
+    } catch {
+      return true
+    }
+  })
+  const captureTimeout = useRef(null)
+
+  const setShowScreen = useCallback((val) => {
+    setShowScreenState((prev) => {
+      const next = typeof val === 'function' ? val(prev) : val
+      try { localStorage.setItem('zx_show_screen', next ? '1' : '0') } catch {}
+      return next
+    })
+  }, [])
+
+  const lib = useRef(new TapeLibrary())
+  const [, bump] = useState(0)
+  const rerender = useCallback(() => bump((n) => n + 1), [])
+
+  const frames = useRef(new BoardFrames((ev) => {
+    if (ev.type === 'screen') {
+      setScreen(ev)
+      setCapturing(false)
+      if (captureTimeout.current) {
+        clearTimeout(captureTimeout.current)
+        captureTimeout.current = null
+      }
+    } else {
+      lib.current.apply(ev)
+    }
+    rerender()
+  }))
+  const demo = useRef(null)
+
+  link.onState = useCallback((s) => {
+    setConn({ state: s.state, detail: s.detail })
+    // a fresh connection knows nothing about the card: ask for the library
+    if (s.state === 'open' || s.state === 'open-unverified') {
+      lib.current.clearList()
+      link.write(encodeListRequest())
+      setTimeout(() => link.write(encodeListRequest()), 600)
+    }
+  }, [link])
+
+  link.onBytes = useCallback((bytes) => {
+    const { text } = frames.current.feed(bytes)
+    if (text.length) {
+      const t = new TextDecoder().decode(text)
+      setBanner((b) => (b + t).slice(-400))
+    }
+  }, [])
+
+  // ---- the demo deck, when there is no board on this machine ------------
+  useEffect(() => {
+    if (!DEMO) return undefined
+    const d = new DemoBoard((ev) => {
+      lib.current.apply(ev)
+      rerender()
+    })
+    demo.current = d
+    d.start()
+    d.list()
+    return () => { d.stop(); demo.current = null }
+  }, [rerender])
+
+  const connected = conn.state === 'open' || conn.state === 'open-unverified'
+
+  /** everything the page sends goes through here (and nowhere in demo mode) */
+  const send = useCallback((bytes) => {
+    if (demo.current) return
+    if (connected) link.write(bytes)
+  }, [link, connected])
+
+  // ---- come up connected ------------------------------------------------
+  // Web Serial lets a page open a port it has already been given, with no
+  // click and no picker (getPorts, not requestPort), so a board this browser
+  // has seen before is picked up as the page loads -- and retried, because a
+  // port left open by another tab, or a board plugged in later, becomes
+  // available a moment after the page starts.
+  const autoTried = useRef(false)
+  useEffect(() => {
+    if (DEMO || autoTried.current) return
+    autoTried.current = true
+    let stop = false
+    let tries = 0
+
+    const attempt = async () => {
+      if (stop || link.port) return
+      tries += 1
+      const r = await link.openGranted()
+      if (stop || link.port) return
+      if (r === 'none') {
+        setConn({
+          state: 'idle',
+          detail: tries < 3 ? 'looking for a port' : 'no port yet',
+        })
+      } else if (r === 'wrong-port') {
+        setConn({ state: 'idle', detail: 'that port did not answer' })
+      }
+      if (tries < 6) setTimeout(() => void attempt(), 3000)
+    }
+
+    void attempt()
+
+    // a browser that never answers getPorts() must not leave the page saying
+    // "looking for the board" for ever
+    const settle = setTimeout(() => {
+      setConn((c) => (c.state === 'auto' ? { state: 'idle', detail: 'no port yet' } : c))
+    }, 2500)
+
+    // a port granted (or freed) in another window: try again on return
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && !link.port) void attempt()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      stop = true
+      clearTimeout(settle)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [link])
+
+  const connect = async () => {
+    setBanner('')
+    await link.open()
+  }
+  const disconnect = async () => {
+    await link.close()
+  }
+
+  const onSelect = useCallback((i) => {
+    lib.current.selected = i
+    rerender()
+  }, [rerender])
+
+  const onLoad = useCallback(async () => {
+    const i = lib.current.selected
+    if (i < 0) return
+    const entry = lib.current.entries[i]
+    if (demo.current) {
+      demo.current.select(i)
+    } else {
+      send(encodeSelectTape(i))
+      // Persist chosen tape to ZXCONFIG.TXT on the SD card
+      if (entry && entry.name) {
+        try {
+          send([0x02]) // enter raw card mode
+          await new Promise((r) => setTimeout(r, 60))
+          const card = await Card.open(cardDevice(link))
+          const cfgText = `TAPE=${entry.name}\r\n`
+          await card.upload('ZXCONFIG.TXT', new TextEncoder().encode(cfgText))
+        } catch (err) {
+          console.warn('Could not persist ZXCONFIG.TXT:', err)
+        } finally {
+          send([0x63]) // 'c' exit raw card mode
+        }
+      }
+    }
+  }, [send, link])
+
+  const onInstantLoad = useCallback(() => {
+    if (demo.current) return
+    send(encodeInstantLoad())
+    // Auto-trigger LOAD "" macro so the game runs immediately
+    setTimeout(() => send(encodeTypeLoad()), 100)
+  }, [send])
+
+  const onTypeLoad = useCallback(() => {
+    if (demo.current) return
+    send(encodeTypeLoad())
+  }, [send])
+
+  const onLoadSnapshot = useCallback(async (entry) => {
+    if (!entry || !entry.name) return
+    if (!window.confirm(`Load snapshot "${entry.name}"?\nCurrent Spectrum state will be overwritten.`)) {
+      return
+    }
+    if (demo.current) {
+      alert('Snapshot loading is not available in demo mode.')
+      return
+    }
+
+    try {
+      setUploadProgress({ percent: 0, detail: 'Reading snapshot from SD card...' })
+      send([0x02]) // enter raw card mode
+      await new Promise((r) => setTimeout(r, 60))
+
+      const card = await Card.open(cardDevice(link))
+      const fileData = await card.download(entry.name, (done, total) => {
+        const percent = total ? Math.round((done / total) * 100) : 0
+        setUploadProgress({
+          percent,
+          detail: `Reading snapshot: ${Math.round(done / 1024)} / ${Math.round(total / 1024)} KB`,
+        })
+      })
+
+      send([0x63]) // exit card mode
+      await new Promise((r) => setTimeout(r, 60))
+
+      setUploadProgress({ percent: 100, detail: 'Injecting snapshot into memory...' })
+      const snap = parseZ80Snapshot(fileData)
+
+      // Enter snapshot mode (pause CPU)
+      send(encodeSnapEnter())
+      await new Promise((r) => setTimeout(r, 10))
+
+      // Set border
+      send(encodeSnapBorder(snap.border))
+
+      // Stream 48K RAM into memory in 1KB chunks
+      const CHUNK = 1024
+      for (let addr = 0; addr < 49152; addr += CHUNK) {
+        const chunk = snap.ram.subarray(addr, Math.min(addr + CHUNK, 49152))
+        send(encodeSnapChunk(addr, chunk))
+        await new Promise((r) => setTimeout(r, 15))
+      }
+
+      // Set CPU registers
+      send(encodeSnapRegs(snap.regs))
+      await new Promise((r) => setTimeout(r, 10))
+
+      // Release CPU and jump to PC
+      send(encodeSnapExecute())
+      setUploadProgress(null)
+    } catch (err) {
+      console.error('Snapshot loading failed:', err)
+      alert(`Snapshot loading failed: ${err.message}`)
+      send([0x63]) // ensure out of raw mode
+      setUploadProgress(null)
+    }
+  }, [send, link])
+
+  // Upload exclusively to the SD card
+  const onUpload = useCallback(async (file) => {
+    if (!file) return
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    if (!bytes.length) return
+
+    if (demo.current) {
+      alert('Upload to SD card is not available in demo mode.')
+      return
+    }
+
+    if (lib.current.card !== 'ok') {
+      alert('SD card is not ready. Please insert a FAT32 microSD card.')
+      return
+    }
+
+    try {
+      setUploadProgress({ percent: 0, detail: 'Preparing SD card...' })
+      send([0x02])
+      await new Promise((r) => setTimeout(r, 60))
+
+      const status = await queryCardStatus(link, { timeoutMs: 2000 })
+      if (!status || !status.fsOk) throw new Error('SD card filesystem is not ready.')
+
+      const card = await Card.open(cardDevice(link))
+
+      await card.upload(file.name, bytes, (done, total) => {
+        const percent = total ? Math.round((done / total) * 100) : 0
+        setUploadProgress({
+          percent,
+          detail: `Writing to SD card: ${Math.round(done / 1024)} / ${Math.round(total / 1024)} KB`,
+        })
+      })
+
+      setUploadProgress({ percent: 100, detail: 'Finishing up...' })
+    } catch (err) {
+      console.error('SD card upload failed:', err)
+      alert(`SD card upload failed: ${err.message}`)
+    } finally {
+      send([0x63]) // 'c'
+      await new Promise((r) => setTimeout(r, 50))
+      setUploadProgress(null)
+      send(encodeListRequest())
+      setTimeout(() => send(encodeListRequest()), 400)
+    }
+  }, [send, link])
+
+  const captureScreen = useCallback(() => {
+    setCapturing(true)
+    if (demo.current) {
+      demo.current.captureScreen()
+      setCapturing(false)
+      return
+    }
+    send(encodeScreenCapture())
+    if (captureTimeout.current) clearTimeout(captureTimeout.current)
+    captureTimeout.current = setTimeout(() => {
+      captureTimeout.current = null
+      setCapturing(false)
+    }, 4000)
+  }, [send])
+
+  const onRescan = useCallback(() => {
+    if (demo.current) demo.current.list()
+    else {
+      lib.current.clearList()
+      rerender()
+      send(encodeListRequest())
+    }
+  }, [send, rerender])
+
+  return (
+    <main>
+      <header>
+        <h1>ZX Spectrum <span className="dim">on Tang Primer 20K</span></h1>
+        <div className="bar">
+          <span className={`dot ${connected || DEMO ? 'on' : ''}`} />
+          <span className="state">
+            {DEMO ? 'demo' : conn.state}
+            {conn.detail ? ` \u2014 ${conn.detail}` : ''}
+          </span>
+          <button
+            type="button"
+            className={'toggle-btn' + (showScreen ? ' active' : '')}
+            onClick={() => setShowScreen((s) => !s)}
+            title={showScreen ? 'Hide Screen Pane' : 'Show Screen Pane'}
+          >
+            ðŸ“º Screen
+          </button>
+          {!DEMO && (connected
+            ? <button onClick={disconnect}>Disconnect</button>
+            : <button onClick={connect} disabled={!serialSupported()}>
+                {conn.detail === 'no port yet' ? 'Pick port' : 'Connect'}
+              </button>)}
+        </div>
+      </header>
+
+      {!serialSupported() && !DEMO && (
+        <p className="warn">
+          This browser has no Web Serial. Use Chrome or Edge over http://localhost
+          (or https) &mdash; Web Serial is not available to plain file:// pages.
+        </p>
+      )}
+
+      <TapeCard
+        library={lib.current}
+        connected={connected || DEMO}
+        demo={DEMO}
+        onRescan={onRescan}
+        onUpload={onUpload}
+        uploadProgress={uploadProgress}
+        onSelect={onSelect}
+        onLoad={onLoad}
+        onEject={() => (demo.current ? demo.current.eject() : send(encodeEjectTape()))}
+        onPlay={() => (demo.current ? demo.current.play() : send(encodePlayTape()))}
+        onInstantLoad={onInstantLoad}
+        onTypeLoad={onTypeLoad}
+        onLoadSnapshot={onLoadSnapshot}
+      />
+
+      {showScreen && (
+        <Screen
+          screen={screen}
+          onCapture={captureScreen}
+          busy={capturing}
+          onClose={() => setShowScreen(false)}
+        />
+      )}
+
+      {banner && <pre className="banner">{banner}</pre>}
+
+      <Keyboard link={link} connected={connected} />
+
+      <footer>
+        <p>
+          The Spectrum boots its own 48K ROM to BASIC on the HDMI output; this
+          page types on it and picks tapes off the card. Protocol:
+          {' '}<code>FE &lt;pos&gt; &lt;down&gt;</code> per key,
+          {' '}<code>FB 53 &lt;idx&gt;</code> to put a tape in the player &mdash;
+          see src/zx_input.v and src/zx_tape_lib.v.
+        </p>
+      </footer>
+    </main>
+  )
+}
