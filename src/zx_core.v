@@ -38,6 +38,8 @@ module zx_core (
     // the web keyboard (zx_input)
     input  wire        uart_rx,
     output wire        key_hit,
+    input  wire [39:0] usb_keys,     // the USB keyboard (zx_usb), ORed in
+    input  wire [4:0]  kempston,     // the USB gamepad, port 0x1F
 
     // the tape player's EAR line (1 = idle high)
     input  wire        ear,
@@ -390,12 +392,13 @@ module zx_core (
     always @* begin
         keys_c = 5'd0;
         for (r = 0; r < 8; r = r + 1)
-            if (!a[8 + r]) keys_c = keys_c | vk_matrix[5*r +: 5];
+            if (!a[8 + r]) keys_c = keys_c | vk_matrix[5*r +: 5] | usb_keys[5*r +: 5];
     end
 
     wire io_rd  = iorq && intcycle_n && !write && !no_read;
     wire io_wr  = iorq && intcycle_n &&  write && ce && ts[2];
     wire ula    = !a[0];
+    wire kemp   = a[0] && !a[5];      // Kempston: A5 low (0x1F), off the ULA's A0
 
     // one pop per IN A,($5B), as its I/O cycle ends: ts[2] repeats through
     // tv80's I/O wait state and through a wait_n stall, so it cannot count
@@ -407,7 +410,8 @@ module zx_core (
     end
 
     wire [7:0] io_dout = io5b ? inst_byte :
-                         (io_rd && ula) ? {1'b1, ear, 1'b1, ~keys_c} : 8'hFF;   // EAR is bit 6: LD-SAMPLE does RRA, AND $20
+                         (io_rd && ula) ? {1'b1, ear, 1'b1, ~keys_c} :
+                         (io_rd && kemp) ? {3'b000, kempston} : 8'hFF;   // EAR is bit 6: LD-SAMPLE does RRA, AND $20
 
     // ------------------------------------------------------------------
     // The read bus

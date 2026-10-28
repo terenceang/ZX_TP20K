@@ -18,6 +18,7 @@ and tapes come off a microSD card into the board's DDR3.
 | `src/zx_input.v` | the page's UART: 1 Mbaud, `FE <pos> <down>` matrix key events (no translation — the page does that) and the deck's `FB` commands |
 | `src/zx_tape_lib.v`, `zx_tape_mem.v`, `tap_player.v`, `src/sd/` | the tape library: the card's files listed to the page, the chosen tape held in DDR3, played with real TAP timings; a raw sector bridge lets the page write the card |
 | `src/zx_snap.v`, `src/zx_scr_cap.v` | snapshot injection (`.Z80` and instant load) and screen capture over the same UART |
+| `src/zx_usb.v`, `src/usb/` | standalone input: a low-speed USB keyboard or gamepad on the Dock's second USB-C (J8, the USB3317 — not the USB-JTAG port), keys as membrane contacts, the gamepad as Kempston (port `0x1F`) |
 | `src/zx_ddr.v` | the DDR3 (adapted from the sibling project's proven `aux_ram.v`): calibrates, self-tests, one client port |
 | `src/hdmi/` | HDMI TX: TMDS encoders, data islands with 48 kHz audio (the beeper and the tape), AVI/ACR packets — shared with the sibling apple2e project |
 | `web/` | the page: 40-key rubber keyboard, PC keyboard capture, paste-a-listing, the tape deck and library, instant load, screen capture |
@@ -114,7 +115,8 @@ sim\render-screen.ps1 -Rgb build\frame.rgb -Out build\frame.png
 - [x] 48K core runs the authentic ROM to the BASIC prompt (`tb_zx`)
 - [x] HDMI 720x480p with beeper audio; hold S1 or S2 for colour bars and a
       1 kHz tone, which bypasses the CPU, RAM and video
-- [x] Web keyboard + paste
+- [x] Web keyboard + paste; web joystick (Sinclair 1/2, Cursor, QAOP)
+- [ ] USB keyboard / gamepad (Kempston) on J8 — simulated, not yet tried on hardware
 - [x] Tape library: card → DDR3 → player with real TAP timings, `LOAD ""`
       starts the deck, tape audio over HDMI at `ZXCONFIG.TXT`'s `VOL=`
 - [x] Card management from the page (upload, delete) over the raw sector bridge

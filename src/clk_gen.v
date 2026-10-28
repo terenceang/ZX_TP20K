@@ -5,6 +5,7 @@
 //    * clk_tmds  135.0 MHz   rPLL x5, the TMDS serial clock (5 bits/pixel)
 //    * clk_pixel  27.0 MHz   CLKDIV /5 off clk_tmds, everything ZX runs here
 //    * ddr_memory_clk 398.25 MHz   second rPLL, the DDR3 IP's memory clock
+//    * clk_usb    12.0 MHz   third rPLL, the USB host's bit clock (src/zx_usb.v)
 //
 //  clk_pixel MUST be derived from clk_tmds via CLKDIV (divide-by-5), not
 //  tapped directly off the crystal: OSER10 requires a fixed, drift-free phase
@@ -31,6 +32,7 @@ module clk_gen (
     output wire       pll_locked,
     output wire       ddr_memory_clk, // 398.25 MHz (DDR3 IP ref/PLL clock)
     output wire       ddr_lock,
+    output wire       clk_usb,      // 12.0 MHz (USB low-speed host, 8 clocks a bit)
     output reg        ce_cpu,
     output reg        ce_48k
 );
@@ -86,6 +88,32 @@ module clk_gen (
         .CLKIN(clk_in),
         .CLKOUT(ddr_memory_clk),
         .LOCK(ddr_lock),
+        .CLKOUTP(),
+        .CLKOUTD(),
+        .CLKOUTD3(),
+        .RESET(rst_in),
+        .RESET_P(1'b0),
+        .CLKFB(1'b0),
+        .FBDSEL(6'b0),
+        .IDSEL(6'b0),
+        .ODSEL(6'b0),
+        .PSDA(4'b0),
+        .DUTYDA(4'b0),
+        .FDLY(4'b0)
+    );
+
+    // ------------------------------------------------------------------
+    // USB PLL: 27 -> 12 MHz (PFD 3 MHz, VCO 768 MHz)
+    // ------------------------------------------------------------------
+    rPLL #(
+        .FCLKIN("27"), .DEVICE("GW2A-18C"),
+        .IDIV_SEL(8), .FBDIV_SEL(3), .ODIV_SEL(64),
+        .CLKFB_SEL("internal"),
+        .DYN_IDIV_SEL("false"), .DYN_FBDIV_SEL("false"), .DYN_ODIV_SEL("false")
+    ) pll_usb (
+        .CLKIN(clk_in),
+        .CLKOUT(clk_usb),
+        .LOCK(),
         .CLKOUTP(),
         .CLKOUTD(),
         .CLKOUTD3(),

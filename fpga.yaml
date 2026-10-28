@@ -6,6 +6,9 @@ top: zx_top
 sources:
   - src/clk_gen.v
   - src/zx_input.v
+  - src/zx_usb.v
+  - src/usb/usb_hid_host.v
+  - src/usb/usb_hid_host_rom.v
   - src/zx_uart_tx.v
   - src/zx_video.v
   - src/zx_core.v

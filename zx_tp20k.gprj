@@ -7,6 +7,9 @@
     <FileList>
         <File path="src/clk_gen.v" type="file.verilog" enable="1"/>
         <File path="src/zx_input.v" type="file.verilog" enable="1"/>
+        <File path="src/zx_usb.v" type="file.verilog" enable="1"/>
+        <File path="src/usb/usb_hid_host.v" type="file.verilog" enable="1"/>
+        <File path="src/usb/usb_hid_host_rom.v" type="file.verilog" enable="1"/>
         <File path="src/zx_uart_tx.v" type="file.verilog" enable="1"/>
         <File path="src/zx_video.v" type="file.verilog" enable="1"/>
         <File path="src/zx_core.v" type="file.verilog" enable="1"/>

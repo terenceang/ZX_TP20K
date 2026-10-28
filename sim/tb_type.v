@@ -93,7 +93,7 @@ module tb_type;
 
     zx_core u_core (
         .clk(clk), .reset(rst), .ce_cpu(ce_cpu), .ce_48k(1'b0),
-        .uart_rx(uart_rx), .key_hit(key_hit), .ear(1'b1),
+        .uart_rx(uart_rx), .key_hit(key_hit), .usb_keys(40'd0), .kempston(5'd0), .ear(1'b1),
         .tape_load(tape_load),
         .instant_active(instant != 0), .inst_pop(inst_pop),
         .inst_byte(inst_byte), .inst_rd_empty(inst_empty),

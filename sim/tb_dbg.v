@@ -42,7 +42,7 @@ module tb_dbg;
 
     zx_core u_core (
         .clk(clk), .reset(rst), .ce_cpu(ce_cpu), .ce_48k(1'b0),
-        .uart_rx(uart_rx), .key_hit(key_hit),
+        .uart_rx(uart_rx), .key_hit(key_hit), .usb_keys(40'd0), .kempston(5'd0),
         .vid_x(px), .vid_y(vcnt), .vid_rgb(rgb), .flash(flash),
         .audio_valid(audio_valid), .audio_l(audio_l), .audio_r(audio_r),
         .halt_n(halt_n), .frame_tick(frame_tick)

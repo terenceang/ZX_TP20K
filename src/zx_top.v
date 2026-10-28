@@ -12,7 +12,8 @@
 //      ddr_memory_clk 398.25 MHz   the DDR3 IP
 //
 //  Inputs: S0 (T10, active low) is the Spectrum's reset; S1/S2 the test
-//  pattern.  Everything else arrives over the UART.
+//  pattern.  Keys arrive over the UART and, standalone, from a USB keyboard
+//  or gamepad on J8 (src/zx_usb.v).
 // ============================================================================
 
 `default_nettype none
@@ -40,6 +41,14 @@ module zx_top (
     output wire        sd_mosi,
     input  wire        sd_miso,
     output wire        sd_cs_n,
+
+    // USB3317 ULPI PHY (Dock USB-C J8): the USB keyboard / gamepad
+    input  wire        usb_clkout,   // T15, 60 MHz from the PHY
+    output wire        usb_reset_n,  // F10
+    input  wire        usb_dir,      // K12
+    input  wire        usb_nxt,      // K13
+    output wire        usb_stp,      // K11
+    inout  wire [7:0]  usb_data,
 
     // HDMI (J3): TMDS clock + 3 data lanes, true LVDS pairs
     output wire        tmds_clk_p,
@@ -69,7 +78,7 @@ module zx_top (
     // ------------------------------------------------------------------
     // Clocks
     // ------------------------------------------------------------------
-    wire clk_tmds, clk_pixel, pll_locked, ddr_memory_clk, ddr_lock;
+    wire clk_tmds, clk_pixel, pll_locked, ddr_memory_clk, ddr_lock, clk_usb;
     wire ce_cpu, ce_48k;
 
     clk_gen u_clk_gen (
@@ -80,6 +89,7 @@ module zx_top (
         .pll_locked(pll_locked),
         .ddr_memory_clk(ddr_memory_clk),
         .ddr_lock(ddr_lock),
+        .clk_usb(clk_usb),
         .ce_cpu(ce_cpu),
         .ce_48k(ce_48k)
     );
@@ -118,6 +128,17 @@ module zx_top (
     wire        audio_valid;
     wire [15:0] audio_l, audio_r;
     wire        halt_n, flash, key_hit, frame_tick;
+
+    // ---- the USB keyboard / gamepad on J8 ------------------------------
+    wire [39:0] usb_keys;
+    wire [4:0]  kempston;
+    wire        usb_hit;
+    zx_usb u_usb (
+        .clk(clk_pixel), .clk_usb(clk_usb),
+        .usb_clk60(usb_clkout), .usb_reset_n(usb_reset_n),
+        .usb_dir(usb_dir), .usb_nxt(usb_nxt), .usb_stp(usb_stp), .usb_data(usb_data),
+        .usb_keys(usb_keys), .kempston(kempston), .usb_hit(usb_hit)
+    );
 
     // ---- tape: the same player, fed from the card --------------------
     wire tape_ear, tape_playing;
@@ -192,6 +213,8 @@ module zx_top (
         .ce_48k(ce_48k),
         .uart_rx(uart_rx),
         .key_hit(key_hit),
+        .usb_keys(usb_keys),
+        .kempston(kempston),
         .lib_list(lib_list), .lib_sel(lib_sel), .lib_idx(lib_idx),
         .lib_eject(lib_eject), .lib_play(lib_play),
         .lib_pause(lib_pause), .lib_rewind(lib_rewind),
@@ -351,7 +374,7 @@ module zx_top (
     // ------------------------------------------------------------------
     reg [3:0] key_led_frames = 4'd0;
     always @(posedge clk_pixel) begin
-        if (key_hit)                                        key_led_frames <= 4'd12;
+        if (key_hit || usb_hit)                             key_led_frames <= 4'd12;
         else if (frame_tick && key_led_frames != 4'd0)      key_led_frames <= key_led_frames - 4'd1;
     end
 

@@ -88,6 +88,7 @@ Run-Tb 'tb_packet_ecc'   @('src/hdmi/hdmi_packet_ecc.v') -Gen '2005'
 Run-Tb 'tb_packets'      @('src/hdmi/hdmi_packets.v') -Gen '2005'
 Run-Tb 'tb_data_island'  @('src/hdmi/hdmi_data_island.v', 'src/hdmi/hdmi_packet_ecc.v', 'src/hdmi/hdmi_tmds_encoder.v') -Gen '2005'
 Run-Tb 'tb_input'        @('src/zx_input.v')
+Run-Tb 'tb_usb'          @('src/zx_usb.v', 'src/usb/usb_hid_host.v', 'src/usb/usb_hid_host_rom.v')
 Run-Tb 'tb_ddr'          @('src/zx_ddr.v', 'sim/models/ddr3_model.v')
 Run-Tb 'tb_video'        @('src/zx_video.v')
 Run-Tb 'tb_tv80'         @('src/z80/tv80_alu.v', 'src/z80/tv80_mcode.v', 'src/z80/tv80_reg.v', 'src/z80/tv80_core.v')
