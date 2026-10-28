@@ -4,23 +4,22 @@
 //  The card holds the tapes; the DDR3 holds the one in the player.  This
 //  module is the join:
 //
-//      card  â”€â”€ sd_vol (FAT32) â”€â”€ list every .TAP â”€â”€â–¶ UART to the page
-//                                 â”‚
-//                                 â””â”€ stream the chosen file â”€â”€â–¶ zx_tape_mem
-//                                                                   â”‚
-//                                    tap_player â—€â”€â”€ one byte at a time
-//                                        â”‚
-//                                       EAR â”€â”€â–¶ zx_core
+//      card -- sd_vol (FAT32) -- list every .TAP/.TZX/.Z80 --> UART to the page
+//                             \-- stream the chosen file --> zx_tape_mem (DDR3)
+//                                                                 |
+//                                  tap_player <-- one byte at a time
+//                                      |
+//                                     EAR --> zx_core
 //
 //  The page may only pick from what the card holds: 0xFB 53 <idx> names an
 //  entry the board itself listed.  Nothing is pushed from the computer.
 //
 //  Board -> page frames (web/src/protocol.js is the other end):
 //
-//      0xF7 <len> <nameâ€¦> <size le32>   one library entry
-//      0xF6 <count>                     end of the list
-//      0xF8 <state>                     the deck's state (6: paused)
-//      0xF9 <idx> <pos le24> <len le32> how far the tape has got
+//      0xF7 <len> <name...> <size le32>  one library entry
+//      0xF6 <count>                      end of the list
+//      0xF8 <state>                      the deck's state (6: paused)
+//      0xF9 <idx> <pos le24> <len le32>  how far the tape has got
 // ============================================================================
 `default_nettype none
 
@@ -93,7 +92,6 @@ module zx_tape_lib (
     // ==================================================================
     reg         lib_go = 1'b0, lib_find = 1'b0;
     reg  [4:0]  sel_idx = 5'd0;
-    wire [4:0]  lib_count;
     wire [87:0] lib_name;
     wire [31:0] lib_size;
     wire        lib_ent, lib_done, lib_found, lib_fail;
@@ -101,28 +99,19 @@ module zx_tape_lib (
     wire [31:0] d0_size;
 
     wire        f_up_go;
-    wire        f_up_drive;
-    wire [19:0] f_up_addr;
     wire [7:0]  f_up_data;
-    wire        f_up_last;
-    wire        f_up_ro, f_up_bad;
     reg         f_up_done = 1'b0;
     wire        f_up_busy = !wr_ready;      // the store sets the pace
 
     wire [3:0]  present, fail;
     wire        fs_ok, sd_loading, sd_busy, sd_err;
     wire [2:0]  estage;
-    wire [15:0] hd_size0, hd_size1;
-    wire        rb_ok, x_take, r_valid, r_done, r_ok;
+    wire        x_take, r_valid, r_done, r_ok;
     wire [7:0]  r_byte;
 
-    // Queue state declarations needed for lib_busy
+    // the listing waits while the UART queue (below) is half full
     reg [2:0]   q_n = 3'd0;
     wire        lib_busy = (q_n >= 3'd2);
-
-    // Reinit SD controller if cmd_list arrives while not mounted
-
-    wire        sd_reset = reset;
 
     // sd_raw_bridge connections
     wire        bridge_card_mode;
@@ -157,15 +146,15 @@ module zx_tape_lib (
         .PWR_BITS(20),
         .FAST_HALF(7'd1)
     ) u_sd (
-        .clk(clk), .reset(sd_reset),
+        .clk(clk), .reset(reset),
         .sd_clk(sd_clk), .sd_mosi(sd_mosi), .sd_miso(sd_miso), .sd_cs_n(sd_cs_n),
 
         .ddr_ready(1'b1),
         .m_go(), .m_addr(), .m_we(), .m_wdata(), .m_rdata(16'h0000), .m_ack(1'b1),
 
-        .f_up_go(f_up_go), .f_up_drive(f_up_drive), .f_up_addr(f_up_addr),
-        .f_up_data(f_up_data), .f_up_last(f_up_last),
-        .f_up_ro(f_up_ro), .f_up_bad(f_up_bad),
+        .f_up_go(f_up_go), .f_up_drive(), .f_up_addr(),
+        .f_up_data(f_up_data), .f_up_last(),
+        .f_up_ro(), .f_up_bad(),
         .f_up_busy(f_up_busy), .f_up_done(f_up_done),
         .f_dn_go(), .f_dn_drive(), .f_dn_addr(), .f_dn_data(8'h00), .f_dn_valid(1'b0),
         .fl_wr(1'b0), .fl_wr_drv(1'b0), .fl_wr_blk(11'd0), .bg_hold(1'b1),
@@ -173,8 +162,8 @@ module zx_tape_lib (
         .present(present), .fail(fail), .fs_ok(fs_ok), .vol(vol),
         .loading(sd_loading), .busy(sd_busy), .err(sd_err), .estage(estage),
 
-        .wb_go(1'b0), .wb_drv(1'b0), .wb_blk(16'd0), .rb_go(1'b0), .rb_ok(rb_ok),
-        .hd_size0(hd_size0), .hd_size1(hd_size1),
+        .wb_go(1'b0), .wb_drv(1'b0), .wb_blk(16'd0), .rb_go(1'b0), .rb_ok(),
+        .hd_size0(), .hd_size1(),
         .mnt_go(1'b0), .mnt_drv(2'd0),
 
         .x_go(bridge_x_go), .x_lba(bridge_x_lba), .x_zero(bridge_x_zero),
@@ -186,7 +175,7 @@ module zx_tape_lib (
 
         // ZX tape: the library
         .lib_go(lib_go), .lib_find(lib_find), .lib_idx(sel_idx),
-        .lib_count(lib_count), .lib_name(lib_name), .lib_size(lib_size),
+        .lib_count(), .lib_name(lib_name), .lib_size(lib_size),
         .lib_ent(lib_ent), .lib_done(lib_done), .lib_found(lib_found),
         .lib_fail(lib_fail),
         .lib_busy(lib_busy),
@@ -229,8 +218,6 @@ module zx_tape_lib (
     wire       tap_done;            // the player reached the end of the image
 
     wire       tap_rd_req;
-    wire [9:0] tap_idx;
-    wire       tap_sector_done;
     reg  [7:0] rd_hold = 8'h00;
 
     wire       tap_eof = (img_len != 24'd0) && (rd_count >= img_len);
@@ -259,12 +246,11 @@ module zx_tape_lib (
     tap_player u_player (
         .clk(clk), .reset(reset | rewind_pulse), .ce_t(ce_cpu && state != S_PAUSE),
         .start(tap_start), .playing(playing),
-        .idx(tap_idx), .rd_req(tap_rd_req), .rd_data(rd_hold),
-        .buf_ready(!rd_empty), .sector_done(tap_sector_done),
+        .rd_req(tap_rd_req), .rd_data(rd_hold), .rd_ready(!rd_empty || tap_eof),
         .ear(ear), .done(tap_done)
     );
 
-    // ---- a first list, ~1 s after reset, once the card has mounted ----
+    // ---- a first list once the card has mounted (or failed to) -------
     reg [15:0] boot_cnt = 16'd0;
     reg        auto_listed = 1'b0;
 

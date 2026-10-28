@@ -21,6 +21,7 @@
 // ============================================================================
 
 import { LIB_ENTRY, LIB_END, DECK_STATE, TAPE_POS, DECK, SCR_FRAME, SCR_BYTES } from './protocol.js'
+import { from83 } from './fat32.js'
 
 /** The parser's states, one per field of the frames above. */
 const S = {
@@ -39,12 +40,7 @@ const S = {
 
 /** The card stores 8.3 names, space padded: "HOBBIT  TAP" is HOBBIT.TAP. */
 export function tapeName(raw) {
-  if (raw.length === 11 && !raw.includes('.')) {
-    const base = raw.slice(0, 8).replace(/\s+$/, '')
-    const ext = raw.slice(8).replace(/\s+$/, '')
-    return ext ? `${base}.${ext}` : base
-  }
-  return raw
+  return raw.length === 11 && !raw.includes('.') ? from83(raw) : raw
 }
 
 const le32 = (a, i) => (a[i] | (a[i + 1] << 8) | (a[i + 2] << 16) | (a[i + 3] << 24)) >>> 0
@@ -54,20 +50,19 @@ const le24 = (a, i) => (a[i] | (a[i + 1] << 8) | (a[i + 2] << 16)) >>> 0
  * Splits the board's byte stream into library frames and plain text.
  *
  * `on(event)` receives:
- *   { type: 'list', entries: [{ name, size }] }
+ *   { type: 'entry', name, size }      one library row
+ *   { type: 'list', count }            the end of the list
  *   { type: 'deck', state }
  *   { type: 'progress', idx, pos, len }
+ *   { type: 'screen', border, flash, data }
  */
 export class BoardFrames {
   constructor(on = () => {}) {
     this.on = on
     this.st = S.IDLE
-    this.count = 0
-    this.entries = []
     this.nameLen = 0
     this.name = []
     this.size = []
-    this.cmd = 0
     this.idx = 0
     this.pos = []
     this.posLen = []
@@ -120,7 +115,6 @@ export class BoardFrames {
           break
 
         case S.COUNT:
-          this.count = b
           this.on({ type: 'list', count: b })
           this.st = S.IDLE
           break
@@ -217,10 +211,7 @@ export class TapeLibrary {
   /** Apply a BoardFrames event. */
   apply(ev) {
     if (ev.type === 'clear') {
-      this.entries = []
-      this.card = 'waiting'
-      this.selected = -1
-      this.listing = false
+      this.clearList()
     } else if (ev.type === 'entry') {
       // every listing is the whole card: the first entry after an end marker
       // starts a fresh list, so repeated or overlapping requests never stack
@@ -249,17 +240,13 @@ export class TapeLibrary {
         this.error = 'the card could not be read'
         if (this.card === 'waiting') this.card = 'error'
       }
-      else if (ev.state !== DECK.ERROR) this.error = ''
+      else this.error = ''
     } else if (ev.type === 'progress') {
       this.loaded = ev.idx
       this.len = ev.len || this.len
-      if (this.state === DECK.LOADING) {
-        // while the card is streaming, this is how much has landed in DDR3
-        this.resident = ev.pos
-        this.pos = ev.pos
-      } else {
-        this.pos = ev.pos
-      }
+      this.pos = ev.pos
+      // while the card is streaming, this is how much has landed in DDR3
+      if (this.state === DECK.LOADING) this.resident = ev.pos
     }
     return this
   }
@@ -347,15 +334,10 @@ export class DemoBoard {
     this.timer = null
   }
 
-  /** Feed the same parsed events the board would send. */
-  _emit(ev) {
-    this.onFrame(ev)
-  }
-
   list() {
     this.onFrame({ type: 'clear' })
-    for (const t of this.tapes) this._emit({ type: 'entry', name: t.name, size: t.size })
-    this._emit({ type: 'list', count: this.tapes.length })
+    for (const t of this.tapes) this.onFrame({ type: 'entry', name: t.name, size: t.size })
+    this.onFrame({ type: 'list', count: this.tapes.length })
   }
 
   select(idx) {
@@ -364,7 +346,7 @@ export class DemoBoard {
     this.idx = idx
     this.pos = 0
     this.set(DECK.LOADING)
-    this._emit({ type: 'progress', idx, pos: 0, len: t.size })
+    this.onFrame({ type: 'progress', idx, pos: 0, len: t.size })
     this.loadAt = Date.now() + this.loadMs
   }
 
@@ -383,7 +365,7 @@ export class DemoBoard {
     if (this.idx < 0) return
     this.pos = 0
     this.playAt = 0
-    this._emit({ type: 'progress', idx: this.idx, pos: 0, len: this.tapes[this.idx].size })
+    this.onFrame({ type: 'progress', idx: this.idx, pos: 0, len: this.tapes[this.idx].size })
     this.set(DECK.READY)
   }
 
@@ -396,18 +378,15 @@ export class DemoBoard {
   }
 
   captureScreen() {
-    // Generate a simulated Sinclair ZX Spectrum boot screen
+    // a blank power-on screen: every attribute 0x38 (white paper, black ink)
     const buf = new Uint8Array(SCR_BYTES)
-    // Default paper: all 768 attributes = 0x38 (paper white, ink black)
-    for (let i = 6144; i < 6912; i++) buf[i] = 0x38
-    // Bottom line text: (C) 1982 Sinclair Research Ltd
-    // Scanlines for row 23 (bottom line, y=184..191): block 2 (128..191), row 7 (56..63)
-    this._emit({ type: 'screen', border: 7, flash: 0, data: buf })
+    buf.fill(0x38, 6144)
+    this.onFrame({ type: 'screen', border: 7, flash: 0, data: buf })
   }
 
   set(s) {
     this.state = s
-    this._emit({ type: 'deck', state: s })
+    this.onFrame({ type: 'deck', state: s })
   }
 
   tick() {
@@ -415,7 +394,7 @@ export class DemoBoard {
     if (!t) return
     if (this.state === DECK.LOADING) {
       this.pos = Math.min(t.size, this.pos + 16000)
-      this._emit({ type: 'progress', idx: this.idx, pos: this.pos, len: t.size })
+      this.onFrame({ type: 'progress', idx: this.idx, pos: this.pos, len: t.size })
       if (this.pos >= t.size) {
         this.set(DECK.READY)
         this.playAt = Date.now() + 1200
@@ -426,11 +405,11 @@ export class DemoBoard {
     } else if (this.state === DECK.ENDED && this.rewindAt && Date.now() >= this.rewindAt) {
       this.rewindAt = 0
       this.pos = 0
-      this._emit({ type: 'progress', idx: this.idx, pos: 0, len: t.size })
+      this.onFrame({ type: 'progress', idx: this.idx, pos: 0, len: t.size })
       this.play()
     } else if (this.state === DECK.PLAYING) {
       this.pos = Math.min(t.size, this.pos + this.bytesPerTick)
-      this._emit({ type: 'progress', idx: this.idx, pos: this.pos, len: t.size })
+      this.onFrame({ type: 'progress', idx: this.idx, pos: this.pos, len: t.size })
       if (this.pos >= t.size) {
         this.set(DECK.ENDED)
         this.rewindAt = Date.now() + 1500

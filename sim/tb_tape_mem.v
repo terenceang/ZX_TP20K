@@ -21,7 +21,6 @@ module tb_tape_mem;
 
     wire        ready, idle, ack;
     wire [15:0] rdata;
-    wire [31:0] diag;
 
     wire [15:0] DDR3_DQ;
     wire [1:0]  DDR3_DQS, DDR3_DQS_n;
@@ -47,7 +46,7 @@ module tb_tape_mem;
     zx_ddr u_ddr (
         .clk(clk), .reset(1'b0), .ddr_ref_clk(clk),
         .go(go), .addr(addr), .we(we), .be(be), .wdata(wdata),
-        .rdata(rdata), .ack(ack), .idle(idle), .ready(ready), .diag(diag),
+        .rdata(rdata), .ack(ack), .idle(idle), .ready(ready),
         .ddr_memory_clk(ddr_memory_clk), .ddr_lock(ddr_lock),
         .DDR3_DQ(DDR3_DQ), .DDR3_DQS(DDR3_DQS), .DDR3_DQS_n(DDR3_DQS_n),
         .DDR3_A(DDR3_A), .DDR3_BA(DDR3_BA), .DDR3_nCS(DDR3_nCS),

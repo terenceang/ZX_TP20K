@@ -26,8 +26,8 @@ Clock enables in the pixel domain:
 
 | Enable | Rate | Math |
 |---|---|---|
-| `ce_cpu` | 3.5 MHz | 7/54 of 27 MHz, fractional accumulator |
-| `ce_48k` | 48 kHz | 16/9000, feeds the HDMI audio packets |
+| `ce_cpu` | 3.5 MHz | 35/270 (7/54) of `VM_PIXEL_HZ`, fractional accumulator |
+| `ce_48k` | 48 kHz | `VM_AUDIO_HZ`/`VM_PIXEL_HZ` (48/27000), feeds the HDMI audio packets |
 
 The CPU is thus not a clock domain at all: tv80 advances on `cen` and its
 address holds still for 7-8 pixel clocks around each T-state.  That property
@@ -118,7 +118,7 @@ The keyboard is the 8x5 matrix; `zx_input` supplies a 40-bit pressed-map and
 chords (CAPS SHIFT + keys) work because the web page holds every key down
 until its release packet.
 
-Interrupts: a 540 000-count divider at 27 MHz is exactly 50 Hz; `/INT` is
+Interrupts: a `VM_PIXEL_HZ`/50 (540 000-count) divider is exactly 50 Hz; `/INT` is
 held for 32 CPU T-states, like the ULA's.  The video frame is 59.94 Hz --
 deliberately unrelated.  Nothing in the 48K can tell, and keeping them
 uncoupled means a video mode change never disturbs the interrupt rhythm.
@@ -210,7 +210,7 @@ Three more things ride the same UART, all in `zx_core`'s domain:
 * `zx_core`'s instant-load trap: while armed, `LD-BYTES` from 0x0562 reads as a
   93-byte routine that takes the `.TAP` from port 0x5B (the store's head),
   holding the CPU on `wait_n` while it is empty.
-* `zx_scr_cap` pauses the CPU and streams the 6912-byte screen file back to
+* `zx_scr_cap` stops the CPU's enable while `capturing` and streams the 6912-byte screen file back to
   the page, off the video's prefetch window like the CPU.
 
 ## DDR3

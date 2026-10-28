@@ -17,9 +17,9 @@
 //  Two blocks, each owning its own registers (a register written from two
 //  always blocks is one of the ways to make a synthesiser guess):
 //
-//    * the byte fetcher owns idx, rd_req, sector_done, fetched, have_byte and
-//      the two-clock request/latch handshake; the sequencer asks with
-//      fetch_want and answers with byte_taken.
+//    * the byte fetcher owns rd_req, fetched, have_byte and the two-clock
+//      request/latch handshake; the sequencer asks with fetch_want and
+//      answers with byte_taken.
 //    * the sequencer owns the TAP walk and the pulse generator.
 // ============================================================================
 `default_nettype none
@@ -37,12 +37,10 @@ module tap_player #(
     input  wire       start,          // pulse: begin at the top of the file
     output reg        playing = 1'b0,
 
-    // byte stream out of the active 512-byte buffer
-    output reg  [9:0] idx = 10'd0,    // 0..511 (10 bits so 512 is expressible)
-    output reg        rd_req = 1'b0,  // pulse with idx; data valid two clocks later
+    // the tape's next byte: rd_req takes it, rd_data has it two clocks later
+    output reg        rd_req = 1'b0,
     input  wire [7:0] rd_data,
-    input  wire       buf_ready,      // the active buffer is complete
-    output reg        sector_done = 1'b0,   // pulse: 512 bytes consumed, swap
+    input  wire       rd_ready,       // a byte is there to take
 
     output reg        ear = 1'b1,
     output reg        done = 1'b0
@@ -69,36 +67,32 @@ module tap_player #(
     reg        fetch_want = 1'b0;
     reg        byte_taken = 1'b0;
 
-    // ---- byte fetcher: owns the buffer pointer and the received byte ----
+    // ---- byte fetcher: owns the request and the received byte ----------
     reg        have_byte = 1'b0;
     reg [7:0]  fetched = 8'd0;
     reg [1:0]  fstate = 2'd0;
 
     always @(posedge clk) begin
         rd_req <= 1'b0;
-        sector_done <= 1'b0;
         if (reset) begin
             fstate <= 2'd0;
             have_byte <= 1'b0;
-            idx <= 10'd0;
         end else if (byte_taken) begin
             have_byte <= 1'b0;
         end else if (fetch_want && !have_byte) begin
-            if (idx >= 10'd512) begin
-                if (buf_ready) begin
-                    sector_done <= 1'b1;   // hand the buffer back
-                    idx <= 10'd0;
+            if (fstate == 2'd0) begin
+                // a request with nothing there would latch a stale byte (a
+                // replay starts a clock after the rewind, before the store
+                // has refilled)
+                if (rd_ready) begin
+                    rd_req <= 1'b1;
+                    fstate <= 2'd1;
                 end
-                fstate <= 2'd0;
-            end else if (fstate == 2'd0) begin
-                rd_req <= 1'b1;            // idx goes out with this pulse
-                fstate <= 2'd1;
             end else if (fstate == 2'd1) begin
                 fstate <= 2'd2;            // the buffer registers the byte
             end else begin
                 fetched <= rd_data;        // and it is here now
                 have_byte <= 1'b1;
-                idx <= idx + 10'd1;
                 fstate <= 2'd0;
             end
         end else

@@ -107,7 +107,7 @@ export class SerialLink {
       const r = await this.open({ ...opts, port })
       if (r === 'ok') return 'ok'
     }
-    return ports.length ? 'wrong-port' : 'none'
+    return 'wrong-port'
   }
 
   /**
@@ -160,9 +160,9 @@ export class SerialLink {
 
   /**
    * The banner goes out once, right after the board's reset, so a page that
-   * connects later will not see it.  We ask anyway, and accept silence as
-   * "probably fine" only when the user says so (opts.requireBanner).
-   * @returns {Promise<'ok'|'wrong-port'>}
+   * connects later will not see it: silence for PROBE_TIMEOUT_MS is taken as
+   * the right port, reported as 'open-unverified'.
+   * @returns {Promise<'ok'>}
    */
   verify() {
     if (this._verify) return this._verify

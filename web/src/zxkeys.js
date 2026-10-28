@@ -152,7 +152,6 @@ function chord(zxId, sym, caps) {
   }
 }
 
-export { CHAR_MAP }
 
 /** A single character as the Spectrum chord that types it. */
 export function charToChord(ch) {

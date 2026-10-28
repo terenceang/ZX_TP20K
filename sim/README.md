@@ -11,8 +11,8 @@ around them.
 | `tb_input.v` | the web keyboard's UART: `FE <pos> <down>` chords, `FF 04`, the `FB` library commands, the tape-audio switch (`FB 41`/`FB 61`), `FB 49 <off le24>`, that anything else is ignored, and that nothing is parsed while a snapshot packet holds the stream |
 | `tb_tape.v` | `tap_player`: every half period of pilot, sync and bits, and the byte order |
 | `tb_tape_mem.v`, `tb_mem_min.v` | the DDR3 tape store, against the behavioural DDR3 model and against a fake DDR for a fast run |
-| `tb_tape_deck.v` | the library's deck path: card bytes → DDR3 → player → EAR, decoded intact, to the end of the tape |
-| `tb_raw_bridge.v` | the raw card bridge's sector commands (`sd_raw_bridge`) |
+| `tb_tape_deck.v` | the library's deck path: card bytes → DDR3 → player → EAR, decoded intact, to the end of the tape, then replayed straight after a rewind |
+| `tb_raw_bridge.v` | the raw card bridge's status reply and sector commands (`sd_raw_bridge`) |
 | `tb_scr_cap.v` | the screen capture's frame: header, status and the 6912 bytes |
 | `tb_vol.v` | `ZXCONFIG.TXT`'s `VOL=` line through `sd_vol`'s config parser (bytes forced into the parser, no card model): the default of 5, spacing, saturation at 100, and lines it must ignore |
 | `tb_ddr.v` | `zx_ddr` against the behavioural IP model: self-test, write/read-back, masked writes |

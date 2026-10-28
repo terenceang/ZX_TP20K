@@ -78,92 +78,26 @@ module sd_raw_bridge (
         to_hex = (nib < 4'd10) ? ("0" + {4'd0, nib}) : ("A" + {4'd0, nib - 4'd10});
     endfunction
 
-    localparam [8*`FW_VER_LEN-1:0] VER_TEXT = `FW_VER_TEXT;
+    // The replies, one string: 0 "\r\nH:00 S:ssss Q:00\r\n" (ssss, bytes 9..12,
+    // is sd_stat in hex), 20 "\r\nSECTORS\r\n", 31 "\r\nUPLOAD HD\r\n",
+    // 44 "\r\ndone\r\n", 52 "\r\nlost\r\n", 60 ACK, 64 the firmware version.
+    // CR/LF are octal escapes, never "\r": Verilog-2001 has no \r escape, and
+    // Gowin emits the letter 'r' for it (Icarus happens to accept it).
+    localparam integer STR_LEN = 64 + `FW_VER_LEN;
+    localparam [8*STR_LEN-1:0] STR = {
+        "\015\012H:00 S:ssss Q:00\015\012",
+        "\015\012SECTORS\015\012",
+        "\015\012UPLOAD HD\015\012",
+        "\015\012done\015\012",
+        "\015\012lost\015\012",
+        "\006", 24'd0,
+        `FW_VER_TEXT};
 
-    // String ROM table
     function [7:0] rom_byte(input [6:0] idx, input [15:0] stat);
-        if (idx >= 7'd64 && idx < 7'd64 + `FW_VER_LEN) begin
-            rom_byte = VER_TEXT[8 * (`FW_VER_LEN - 7'd1 - (idx - 7'd64)) +: 8];
-        end else case (idx[5:0])
-            // 0..19: CR LF "H:00 S:ssss Q:00" CR LF
-    // CR and LF are written as 8'h0D / 8'h0A, never as "\r" / "\n":
-    // Verilog-2001 has no \r escape, and Gowin emits the letter 'r' for it
-    // (Icarus happens to accept it, which is why simulation did not catch it).
-    // See apple2e serial_debugger.v, which writes \015\012 for the same reason.
-            6'd0:  rom_byte = 8'h0D;
-            6'd1:  rom_byte = 8'h0A;
-            6'd2:  rom_byte = "H";
-            6'd3:  rom_byte = ":";
-            6'd4:  rom_byte = "0";
-            6'd5:  rom_byte = "0";
-            6'd6:  rom_byte = " ";
-            6'd7:  rom_byte = "S";
-            6'd8:  rom_byte = ":";
-            6'd9:  rom_byte = to_hex(stat[15:12]);
-            6'd10: rom_byte = to_hex(stat[11:8]);
-            6'd11: rom_byte = to_hex(stat[7:4]);
-            6'd12: rom_byte = to_hex(stat[3:0]);
-            6'd13: rom_byte = " ";
-            6'd14: rom_byte = "Q";
-            6'd15: rom_byte = ":";
-            6'd16: rom_byte = "0";
-            6'd17: rom_byte = "0";
-            6'd18: rom_byte = 8'h0D;
-            6'd19: rom_byte = 8'h0A;
-
-            // 20..30: \r\nSECTORS\r\n
-            6'd20: rom_byte = 8'h0D;
-            6'd21: rom_byte = 8'h0A;
-            6'd22: rom_byte = "S";
-            6'd23: rom_byte = "E";
-            6'd24: rom_byte = "C";
-            6'd25: rom_byte = "T";
-            6'd26: rom_byte = "O";
-            6'd27: rom_byte = "R";
-            6'd28: rom_byte = "S";
-            6'd29: rom_byte = 8'h0D;
-            6'd30: rom_byte = 8'h0A;
-
-            // 31..43: \r\nUPLOAD HD\r\n
-            6'd31: rom_byte = 8'h0D;
-            6'd32: rom_byte = 8'h0A;
-            6'd33: rom_byte = "U";
-            6'd34: rom_byte = "P";
-            6'd35: rom_byte = "L";
-            6'd36: rom_byte = "O";
-            6'd37: rom_byte = "A";
-            6'd38: rom_byte = "D";
-            6'd39: rom_byte = " ";
-            6'd40: rom_byte = "H";
-            6'd41: rom_byte = "D";
-            6'd42: rom_byte = 8'h0D;
-            6'd43: rom_byte = 8'h0A;
-
-            // 44..51: \r\ndone\r\n
-            6'd44: rom_byte = 8'h0D;
-            6'd45: rom_byte = 8'h0A;
-            6'd46: rom_byte = "d";
-            6'd47: rom_byte = "o";
-            6'd48: rom_byte = "n";
-            6'd49: rom_byte = "e";
-            6'd50: rom_byte = 8'h0D;
-            6'd51: rom_byte = 8'h0A;
-
-            // 52..59: \r\nlost\r\n
-            6'd52: rom_byte = 8'h0D;
-            6'd53: rom_byte = 8'h0A;
-            6'd54: rom_byte = "l";
-            6'd55: rom_byte = "o";
-            6'd56: rom_byte = "s";
-            6'd57: rom_byte = "t";
-            6'd58: rom_byte = 8'h0D;
-            6'd59: rom_byte = 8'h0A;
-
-            // 60: 0x06 (ACK)
-            6'd60: rom_byte = 8'h06;
-
-            default: rom_byte = 8'h00;
-        endcase
+        if (idx >= 7'd9 && idx <= 7'd12)
+            rom_byte = to_hex(stat[4 * (7'd12 - idx) +: 4]);
+        else
+            rom_byte = STR[8 * (STR_LEN - 1 - idx) +: 8];
     endfunction
 
     localparam [3:0]

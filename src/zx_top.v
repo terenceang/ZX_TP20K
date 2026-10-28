@@ -24,7 +24,6 @@ module zx_top (
 
     output wire [5:0]  led,          // Dock LEDs, active low
 
-
     // test-pattern buttons (active low, 10k pull-ups): S1 T3 and S2 T2.
     // Holding either forces HDMI to colour bars + a 1 kHz tone, which checks
     // the whole TMDS/audio path with no CPU, RAM or video in the way.
@@ -186,7 +185,7 @@ module zx_top (
     wire [7:0] scr_tx_data;
     wire       scr_tx_busy;
 
-    zx_core #(.VID_X0(104)) u_core (
+    zx_core u_core (
         .clk(clk_pixel),
         .reset(sys_reset),
         .ce_cpu(ce_cpu),
@@ -249,11 +248,12 @@ module zx_top (
 
     // 1 kHz square wave on the 48 kHz sample strobe (24 samples per half
     // period), the same level as the beeper so the sink sees a normal stream.
+    localparam [4:0] TONE_HALF = `VM_AUDIO_HZ / 2000;
     reg [4:0]  tone_cnt = 5'd0;
     reg        tone_hi  = 1'b0;
     always @(posedge clk_pixel) begin
         if (audio_valid) begin
-            if (tone_cnt == 5'd23) begin
+            if (tone_cnt == TONE_HALF - 5'd1) begin
                 tone_cnt <= 5'd0;
                 tone_hi  <= ~tone_hi;
             end else
@@ -311,7 +311,6 @@ module zx_top (
     // store's (zx_tape_mem).
     // ------------------------------------------------------------------
     wire ddr_ready;
-    wire [31:0] ddr_diag;
 
     zx_ddr u_ddr (
         .clk(clk_pixel),
@@ -320,7 +319,6 @@ module zx_top (
         .go(ddr_go), .addr(ddr_addr), .we(ddr_we), .be(ddr_be), .wdata(ddr_wdata),
         .rdata(ddr_rdata), .ack(ddr_ack), .idle(ddr_idle),
         .ready(ddr_ready),
-        .diag(ddr_diag),
         .ddr_memory_clk(ddr_memory_clk),
         .ddr_lock(ddr_lock),
         .DDR3_DQ(DDR3_DQ), .DDR3_DQS(DDR3_DQS), .DDR3_DQS_n(DDR3_DQS_n),

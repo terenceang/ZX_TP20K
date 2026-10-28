@@ -14,31 +14,11 @@
 
 const le16 = (b, o) => b[o] | (b[o + 1] << 8)
 
-function decompressV1(src, srcOff, dest) {
-  let di = 0
-  let si = srcOff
-  const len = src.length
-  while (si < len && di < dest.length) {
-    if (si + 3 < len && src[si] === 0x00 && src[si + 1] === 0xed && src[si + 2] === 0xed && src[si + 3] === 0x00) {
-      break // End marker
-    }
-    if (si + 3 < len && src[si] === 0xed && src[si + 1] === 0xed) {
-      const count = src[si + 2]
-      const val = src[si + 3]
-      si += 4
-      for (let k = 0; k < count && di < dest.length; k++) dest[di++] = val
-    } else {
-      dest[di++] = src[si++]
-    }
-  }
-}
-
-function decompressBlock(src, srcOff, srcLen, dest, destOff) {
-  let si = srcOff
-  const end = srcOff + srcLen
-  let di = destOff
-  const max = destOff + 16384
+// ED ED <count> <byte> runs, from src[si..end) into dest[di..max).  A v1
+// image ends with 00 ED ED 00; a v2/v3 block is just its length.
+function decompress(src, si, end, dest, di, max, v1 = false) {
   while (si < end && di < max) {
+    if (v1 && si + 3 < end && src[si] === 0x00 && src[si + 1] === 0xed && src[si + 2] === 0xed && src[si + 3] === 0x00) break
     if (si + 3 < end && src[si] === 0xed && src[si + 1] === 0xed) {
       const count = src[si + 2]
       const val = src[si + 3]
@@ -89,7 +69,7 @@ export function parseZ80Snapshot(bytes) {
   if (pc !== 0) {
     // Version 1
     if (compressedV1) {
-      decompressV1(bytes, 30, ram)
+      decompress(bytes, 30, bytes.length, ram, 0, ram.length, true)
     } else {
       ram.set(bytes.subarray(30, 30 + 49152))
     }
@@ -117,7 +97,7 @@ export function parseZ80Snapshot(bytes) {
         if (destOffset >= 0) ram.set(bytes.subarray(off, off + 16384), destOffset)
         off += 16384
       } else {
-        if (destOffset >= 0) decompressBlock(bytes, off, blkLen, ram, destOffset)
+        if (destOffset >= 0) decompress(bytes, off, off + blkLen, ram, destOffset, destOffset + 16384)
         off += blkLen
       }
     }

@@ -7,15 +7,15 @@ Reports: `impl/pnr/zx_tp20k.rpt.txt` (resource usage), `impl/pnr/zx_tp20k_tr_con
 (Fmax / TNS), `impl/gwsynthesis/zx_tp20k_syn_resource.html` (per module),
 `impl/pnr/zx_tp20k.power.html` (power).
 
-## The build (1.0.14)
+## The build (1.0.14 + the dead-code cleanup)
 
 | Resource | Used |
 |---|---|
-| Logic | 11908 / 20736 (**58%**) |
-| — LUT / ALU / ROM16 | 9890 / 1142 / 0 |
+| Logic | 11831 / 20736 (**58%**) |
+| — LUT / ALU / ROM16 | 9813 / 1142 / 0 |
 | — SSRAM (RAM16) | 146 |
-| Registers | 6164 / 16173 (39%) |
-| CLS (slices) | 7986 / 10368 (78%) |
+| Registers | 6158 / 16173 (39%) |
+| CLS (slices) | 7935 / 10368 (77%) |
 | BSRAM | 40 / 46 (**87%**) |
 | — SDPB (the 48K RAM) | 24 |
 | — pROM (the 16K ROM) | 8 |
@@ -27,10 +27,10 @@ Reports: `impl/pnr/zx_tp20k.rpt.txt` (resource usage), `impl/pnr/zx_tp20k_tr_con
 
 | Clock | Needed | Fmax |
 |---|---|---|
-| `clk` (crystal, the DDR3 IP's `.clk`) | 27.0 MHz | 227 MHz |
-| `clk_pixel` (everything ZX) | 27.0 MHz | 54 MHz |
-| `mclk` (DDR3 IP user clock) | 99.6 MHz | 116 MHz |
-| `ddr_memory_clk` | 398.2 MHz | 578 MHz |
+| `clk` (crystal, the DDR3 IP's `.clk`) | 27.0 MHz | 218 MHz |
+| `clk_pixel` (everything ZX) | 27.0 MHz | 52 MHz |
+| `mclk` (DDR3 IP user clock) | 99.6 MHz | 113 MHz |
+| `ddr_memory_clk` | 398.2 MHz | 630 MHz |
 
 Zero setup and hold violations; `scripts/build.ps1` fails the build on any.
 Fmax moves a few percent between builds (placement has no fixed seed; the gate

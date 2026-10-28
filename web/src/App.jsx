@@ -8,7 +8,8 @@ import Keyboard from './components/Keyboard.jsx'
 import TapeCard from './components/TapeCard.jsx'
 import Screen from './components/Screen.jsx'
 import { BoardFrames, TapeLibrary, DemoBoard, tapeConfig } from './library.js'
-import { Card, cardDevice, queryCardStatus, from83 } from './card.js'
+import { Fat32, from83 } from './fat32.js'
+import { cardDevice, queryCardStatus } from './card-disk.js'
 import {
   encodeListRequest,
   encodeSelectTape,
@@ -152,7 +153,7 @@ export default function App() {
   }, [link, connected])
 
   /**
-   * Run `fn(card)` with the board in raw card mode, and always hand the UART
+   * Run `fn(fs)` (the card's Fat32) with the board in raw card mode, and always hand the UART
    * back.  The board's own SD jobs (a tape streaming into DDR3, a listing) make
    * raw reads answer "lost", so wait for the card to go idle first.
    */
@@ -168,7 +169,9 @@ export default function App() {
       }
       if (!status || !status.fsOk) throw new Error('SD card filesystem is not ready.')
       if (status.busy || status.loading) throw new Error('SD card is busy.')
-      return await fn(await Card.open(cardDevice(link)))
+      const fs = new Fat32(cardDevice(link))
+      await fs.mount()
+      return await fn(fs)
     } finally {
       send([CARD_EXIT])
       await sleep(50)
@@ -184,7 +187,7 @@ export default function App() {
     clearTimeout(namesTimer.current)
     namesTimer.current = setTimeout(async () => {
       try {
-        const files = await withCard((card) => card.fs.list())
+        const files = await withCard((fs) => fs.list())
         lib.current.longNames = new Map(files.map((f) => [from83(f.short), f.name]))
         rerender()
       } catch (err) {
@@ -255,10 +258,10 @@ export default function App() {
     rerender()
   }, [rerender])
 
-  const writeTapeConfig = async (card, name) => {
-    const f = await card.fs.find('ZXCONFIG.TXT')
-    const old = f ? new TextDecoder().decode(await card.download(f)) : ''
-    return card.upload('ZXCONFIG.TXT', new TextEncoder().encode(tapeConfig(old, name)))
+  const writeTapeConfig = async (fs, name) => {
+    const f = await fs.find('ZXCONFIG.TXT')
+    const old = f ? new TextDecoder().decode(await fs.readFile(f)) : ''
+    return fs.create('ZXCONFIG.TXT', new TextEncoder().encode(tapeConfig(old, name)))
   }
 
   // ZXCONFIG.TXT's TAPE= is the tape in the player: the board mounts it at
@@ -266,7 +269,7 @@ export default function App() {
   // card that cannot be written still loads, it just will not persist.
   const saveTape = useCallback(async (name) => {
     try {
-      await withCard((card) => writeTapeConfig(card, name))
+      await withCard((fs) => writeTapeConfig(fs, name))
     } catch (err) {
       console.warn('ZXCONFIG.TXT not written:', err)
     }
@@ -295,10 +298,10 @@ export default function App() {
     await saveTape(null)
   }, [send, saveTape])
 
-  const readFromCard = useCallback((name, what) => withCard(async (card) => {
-    const f = await card.fs.find(name)
+  const readFromCard = useCallback((name, what) => withCard(async (fs) => {
+    const f = await fs.find(name)
     if (!f) throw new Error(`${name} is not on the card.`)
-    return card.download(f, (done, total) => {
+    return fs.readFile(f, (done, total) => {
       const percent = total ? Math.round((done / total) * 100) : 0
       setUploadProgress({
         percent,
@@ -411,10 +414,10 @@ export default function App() {
 
     try {
       setUploadProgress({ percent: 0, detail: 'Preparing SD card...' })
-      await withCard(async (card) => {
+      await withCard(async (fs) => {
         // the same name again replaces the file on the card (fat32.js create)
-        if (await card.fs.find(file.name) && !window.confirm(`${file.name} is already on the card. Replace it?`)) return
-        await card.upload(file.name, bytes, (done, total) => {
+        if (await fs.find(file.name) && !window.confirm(`${file.name} is already on the card. Replace it?`)) return
+        await fs.create(file.name, bytes, (done, total) => {
           const percent = total ? Math.round((done / total) * 100) : 0
           setUploadProgress({
             percent,
@@ -466,11 +469,11 @@ export default function App() {
     if (i === lib.current.loaded) send(encodeEjectTape())
     try {
       setUploadProgress({ percent: 0, detail: `Deleting ${name}...` })
-      await withCard(async (card) => {
-        const f = await card.fs.find(name)
+      await withCard(async (fs) => {
+        const f = await fs.find(name)
         if (!f) throw new Error(`${name} is not on the card.`)
-        await card.remove(f)
-        if (i === lib.current.loaded) await writeTapeConfig(card, null)
+        await fs.remove(f)
+        if (i === lib.current.loaded) await writeTapeConfig(fs, null)
       })
     } catch (err) {
       console.error('SD card delete failed:', err)

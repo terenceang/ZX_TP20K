@@ -2,7 +2,8 @@
 //  zx_scr_cap.v -- Screen capture dumper over UART
 //
 //  When triggered by cap_req:
-//    1. Pauses the CPU (pause_cpu <= 1) and sets capturing <= 1.
+//    1. Raises `capturing`: zx_core stops the CPU's enable and gives this
+//       module the RAM's read port.
 //    2. Sends frame header: 0xF5 (SCR_FRAME).
 //    3. Sends status byte: {4'd0, flash, border[2:0]}.
 //    4. Streams all 6912 bytes of screen memory (6144 bitmap + 768 attributes)
@@ -10,7 +11,7 @@
 //       Prefetches each byte while UART TX transmits the previous byte, so
 //       transmission runs at the full 1 Mbps wire rate without idle bubbles.
 //       Respects vid_busy (vid_x < 64) so video HDMI prefetch is never disturbed.
-//    5. Deasserts pause_cpu and capturing once all bytes are sent.
+//    5. Drops `capturing` once all bytes are sent.
 // ============================================================================
 
 `default_nettype none
@@ -30,9 +31,7 @@ module zx_scr_cap #(
     output reg  [15:0] ram_addr = 16'd0,
     input  wire [7:0]  ram_rdata,
 
-    // CPU control
     output reg         capturing = 1'b0,  // 1 while screen capture is in progress
-    output wire        pause_cpu,  // pauses Z80 CPU clock enable
 
     // UART TX interface
     output reg         tx_req = 1'b0,
@@ -40,14 +39,11 @@ module zx_scr_cap #(
     input  wire        tx_busy
 );
 
-    assign pause_cpu = capturing;
-
     localparam [2:0] S_IDLE     = 3'd0,
                      S_SEND_HDR = 3'd1,
                      S_SEND_ST  = 3'd2,
-                     S_RD_PIPE  = 3'd3,
-                     S_STREAM   = 3'd4,
-                     S_FINISH   = 3'd5;
+                     S_STREAM   = 3'd3,
+                     S_FINISH   = 3'd4;
 
     reg [2:0]  state = S_IDLE;
     reg [12:0] byte_idx = 13'd0;    // 0 .. 6911
@@ -103,25 +99,7 @@ module zx_scr_cap #(
                         byte_idx  <= 13'd0;
                         have_next <= 1'b0;
                         rd_cnt    <= 2'd0;
-                        state     <= S_RD_PIPE;
-                    end
-                end
-
-                S_RD_PIPE: begin
-                    // Read byte 0 from RAM to prime the pipeline (3 clocks for sync RAM)
-                    if (!have_next) begin
-                        case (rd_cnt)
-                            2'd0: if (!vid_busy) begin ram_addr <= 16'd0; rd_cnt <= 2'd1; end
-                            2'd1: if (!vid_busy) rd_cnt <= 2'd2;
-                            2'd2: if (!vid_busy) begin
-                                prefetched <= ram_rdata;
-                                have_next  <= 1'b1;
-                                byte_idx   <= 13'd0;
-                                rd_cnt     <= 2'd0;
-                                state      <= S_STREAM;
-                            end
-                            default: rd_cnt <= 2'd0;
-                        endcase
+                        state     <= S_STREAM;
                     end
                 end
 
@@ -140,8 +118,10 @@ module zx_scr_cap #(
                         end
                     end
 
-                    // While UART TX is busy with the current byte, prefetch the next byte from RAM
-                    if (!have_next && (state == S_STREAM)) begin
+                    // While UART TX is busy with the current byte, prefetch the
+                    // next from RAM: address, the registered read, then the
+                    // byte (3 clocks, none of them in the video's window)
+                    if (!have_next) begin
                         case (rd_cnt)
                             2'd0: if (!vid_busy) begin ram_addr <= {3'd0, byte_idx}; rd_cnt <= 2'd1; end
                             2'd1: if (!vid_busy) rd_cnt <= 2'd2;

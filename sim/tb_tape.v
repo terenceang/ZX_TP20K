@@ -27,8 +27,8 @@ module tb_tape;
 
     reg start = 1'b0;
     reg rst = 1'b1;
-    wire playing, ear, done, sector_done, rd_req;
-    wire [9:0] idx;
+    wire playing, ear, done, rd_req;
+    reg  [3:0] idx = 4'd0;              // the byte the next request takes
     wire [7:0] rd_data;
 
     // the TAP file: len=4 header block (flag 0x00, A5, 5A, crc), then len=0
@@ -41,9 +41,9 @@ module tb_tape;
         tap[6] = 8'h00; tap[7] = 8'h00;      // next block: length 0 -> end
     end
 
-    // byte source: the player's idx picks the byte, one clock later
+    // byte source: each request takes the next byte, one clock later
     reg [7:0] rd_q = 8'h00;
-    always @(posedge clk) if (rd_req) rd_q <= tap[idx[3:0]];
+    always @(posedge clk) if (rd_req) begin rd_q <= tap[idx]; idx <= idx + 4'd1; end
     assign rd_data = rd_q;
 
     tap_player #(
@@ -53,8 +53,7 @@ module tb_tape;
     ) u_player (
         .clk(clk), .reset(rst), .ce_t(ce),
         .start(start), .playing(playing),
-        .idx(idx), .rd_req(rd_req), .rd_data(rd_data),
-        .buf_ready(1'b1), .sector_done(sector_done),
+        .rd_req(rd_req), .rd_data(rd_data), .rd_ready(1'b1),
         .ear(ear), .done(done)
     );
 

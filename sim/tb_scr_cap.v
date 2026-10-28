@@ -21,7 +21,6 @@ module tb_scr_cap;
     always @(posedge clk) ram_rdata <= ram[ram_addr];
 
     wire capturing;
-    wire pause_cpu;
     wire tx_req;
     wire [7:0] tx_data;
     reg  tx_busy = 0;
@@ -52,7 +51,6 @@ module tb_scr_cap;
         .ram_addr(ram_addr),
         .ram_rdata(ram_rdata),
         .capturing(capturing),
-        .pause_cpu(pause_cpu),
         .tx_req(tx_req),
         .tx_data(tx_data),
         .tx_busy(tx_busy)

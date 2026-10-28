@@ -71,12 +71,12 @@ burst + masked write).  This board's DDR3 is picky about IP generation: this
 project vendors the same 1.9.8 netlist the sibling project calibrated with —
 do not regenerate the IP with 1.9.12 (see `src/ddr3_memory_interface/README.md`).
 
-If LED 1 stays on: the wrapper's `diag` port is a static 32-bit word for
-exactly this moment — `{8'hD3, 8'd0, calib, ready, tst, tbad, tval, ...}`.
-`tst` says which of the four self-test steps failed (0 write, 1 read,
-2 masked write, 3 read); `tval` is the first wrong word.  A failure at
-calibration (`calib` never rising) is a board/IP problem, not RTL: re-seat
-the SOM, check the DDR3 balls against Sipeed's example.
+If LED 1 stays on, rebuild first (calibration is placement-dependent between
+builds).  `zx_ddr`'s `tst` says which of the four self-test steps failed
+(0 write, 1 read, 2 masked write, 3 read) and `tbad` that one did -- route them
+to spare LEDs, or watch them in `tb_ddr`.  A failure at calibration
+(`m_calib` never rising) is a board/IP problem, not RTL: re-seat the SOM,
+check the DDR3 balls against Sipeed's example.
 
 ## 3b. The tape
 

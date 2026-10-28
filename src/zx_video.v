@@ -8,7 +8,7 @@
 //
 //  Display memory (the "screen file") is interleaved, not linear:
 //
-//      pixel byte  0x4000 | {0, y[7:6], y[5:3], y[2:0], 00, x[7:3]}
+//      pixel byte  0x4000 | {y[7:6], y[2:0], y[5:3], x[7:3]}
 //      attribute   0x5800 | {y[7:3], x[7:3]}      ink bits2:0, paper 5:3,
 //                                                    bit6 BRIGHT, bit7 FLASH
 //
@@ -58,9 +58,7 @@ module zx_video #(
     wire [5:0] fx = x[5:0];
     wire [4:0] fxc = fx[4:0];       // byte column of the prefetch
 
-    // Screen-file interleave, low to high: column, then (y&7) at bits 7:5 of
-    // the address... no: the byte rows are 0x100 apart and the character rows
-    // 0x20 apart, so:
+    // Screen-file interleave: scanlines 0x100 apart, character rows 0x20:
     //   addr = 0x4000 | y[7:6]<<11 | (y&7)<<8 | ((y>>3)&7)<<5 | column
     wire [15:0] pix_a = {2'b01, 1'b0, zy[7:6], zy[2:0], zy[5:3], fxc};
     wire [15:0] attr_a = 16'h5800 | {zy[7:3], fxc};

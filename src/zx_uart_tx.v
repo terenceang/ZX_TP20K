@@ -25,30 +25,13 @@ module zx_uart_tx (
 );
     localparam [8:0] CLKS_PER_BIT = `UART_CLKS_PER_BIT;
 
-    localparam [8*`FW_VER_LEN-1:0] VER_TEXT = `FW_VER_TEXT;
-    localparam [7:0] BANNER_PREFIX_LEN = 8'd21;
-    localparam [7:0] TOTAL_LEN = BANNER_PREFIX_LEN + `FW_VER_LEN;
+    // the banner, then the firmware version (src/version.vh).  CR/LF are
+    // octal escapes: Verilog-2001 has no \r, and Gowin emits the letter r.
+    localparam [7:0] TOTAL_LEN = 8'd21 + `FW_VER_LEN;
+    localparam [8*TOTAL_LEN-1:0] TEXT = {"[ ZX Spectrum 20K ]\015\012", `FW_VER_TEXT};
 
-    // The banner followed by FW version
     function [7:0] banner(input [7:0] i);
-        if (i < BANNER_PREFIX_LEN) begin
-            case (i[4:0])
-                5'd0:  banner = "[";       5'd1:  banner = " ";
-                5'd2:  banner = "Z";       5'd3:  banner = "X";
-                5'd4:  banner = " ";       5'd5:  banner = "S";
-                5'd6:  banner = "p";       5'd7:  banner = "e";
-                5'd8:  banner = "c";       5'd9:  banner = "t";
-                5'd10: banner = "r";       5'd11: banner = "u";
-                5'd12: banner = "m";       5'd13: banner = " ";
-                5'd14: banner = "2";       5'd15: banner = "0";
-                5'd16: banner = "K";       5'd17: banner = " ";
-                5'd18: banner = "]";       5'd19: banner = 8'h0D; // CR ("\r" is not a Verilog escape)
-                5'd20: banner = 8'h0A;     // LF
-                default: banner = 8'd0;
-            endcase
-        end else begin
-            banner = VER_TEXT[8 * (TOTAL_LEN - 8'd1 - i) +: 8];
-        end
+        banner = TEXT[8 * (TOTAL_LEN - 8'd1 - i) +: 8];
     endfunction
 
     reg [9:0]  sh   = 10'h3FF;       // {2 stop, 8 data, start}; LSB goes first

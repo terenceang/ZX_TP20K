@@ -8,7 +8,7 @@
 //
 //  The IP's user side runs on its own clk_out (memory clock / 4, ~100 MHz),
 //  not phase-related to clk.  One operation at a time crosses between them
-//  by a toggle handshake: the 27 MHz side holds op/addr/data steady, flips
+//  by a toggle handshake: the 27 MHz side holds we/addr/data steady, flips
 //  req_t, and waits for ack_t to flip back, which the DDR side does only
 //  after rdata is final.  Every multi-bit value that crosses is therefore
 //  stable for at least two clocks of the receiving domain before use; the
@@ -25,7 +25,7 @@
 //  After calibration the self-test writes eight distinct words, reads them
 //  back, overwrites word 3 through a byte mask and reads that back -- which
 //  pins the beat order, the mask polarity and that writes land at all.  Only
-//  then does `ready` rise.  A failure leaves it low and `diag` says where.
+//  then does `ready` rise.  A failure leaves it low (LED 1 stays lit).
 // ============================================================================
 
 `default_nettype none
@@ -47,9 +47,6 @@ module zx_ddr (
 
     // 1 once the DDR3 has calibrated and passed its self-test (clk domain)
     output wire        ready,
-    // Bring-up diagnostics, quasi-static: {8'hD3, 8'd0, calib, ready,
-    // self-test step, tbad, first wrong word}, then live state
-    output wire [31:0] diag,
 
     input  wire        ddr_memory_clk,   // 398.25 MHz from clk_gen's rPLL
     input  wire        ddr_lock,
@@ -71,14 +68,13 @@ module zx_ddr (
     output wire        DDR3_ODT,
     output wire [1:0]  DDR3_DM
 );
-    localparam [1:0] OP_RD = 2'd0, OP_WR = 2'd1;
 
     // =====================================================================
     // 27 MHz side: request latch and handshake
     // =====================================================================
 
     reg         req_t = 1'b0;          // flips once per operation
-    reg  [1:0]  req_op = OP_RD;
+    reg         req_we = 1'b0;
     reg  [25:0] req_addr = 26'd0;
     reg  [15:0] req_wdata = 16'd0;
     reg  [1:0]  req_be = 2'b11;
@@ -126,7 +122,7 @@ module zx_ddr (
                 pend    <= 1'b0;
             end
         end else if (ready && pend && !go) begin   // a new go waits a clock
-            req_op    <= a_we ? OP_WR : OP_RD;
+            req_we    <= a_we;
             req_addr  <= a_addr;
             req_wdata <= a_wdata;
             req_be    <= a_be;
@@ -159,19 +155,16 @@ module zx_ddr (
     // E_RD: a read has gone; wait for its burst.
     localparam [1:0] E_IDLE = 2'd0, E_CMD = 2'd1, E_RD = 2'd2;
     reg [1:0] e = E_IDLE;
-    reg [1:0] op = OP_RD;
-    reg open = 1'b0;                   // a request has been taken and not acked
 
     wire        m_cmd_en = (e == E_CMD) && m_cmd_ready && (!m_wr || m_wr_rdy);
     wire [15:0] m_word   = m_rd_data[{m_addr[2:0], 4'd0} +: 16];
 
     // Init: after calibration, write one burst of eight distinct words, read
     // it back, overwrite word 3 alone with a byte mask, and read it back
-    // again.  A failure leaves the DDR3 not ready and diag says where.
+    // again.  A failure leaves the DDR3 not ready.
     reg         init_done = 1'b0;
     reg  [1:0]  tst = 2'd0;            // 0 burst write, 1 read, 2 masked write, 3 read
     reg         tbad = 1'b0;
-    reg  [15:0] tval = 16'd0;
     function [15:0] pat(input [2:0] i);
         pat = 16'h5AA5 ^ ({13'd0, i} * 16'h1111);
     endfunction
@@ -179,15 +172,7 @@ module zx_ddr (
     integer k;
     always @* for (k = 0; k < 8; k = k + 1)
         t_want[16*k +: 16] = (tst[1] && k == 3) ? 16'hC33C : pat(k[2:0]);
-    reg [15:0] t_bad_word;             // the first word that differs, or 0 = none
-    reg        t_ok;
-    always @* begin
-        t_ok = 1'b1; t_bad_word = 16'd0;
-        for (k = 7; k >= 0; k = k - 1)
-            if (m_rd_data[16*k +: 16] != t_want[16*k +: 16]) begin
-                t_ok = 1'b0; t_bad_word = m_rd_data[16*k +: 16];
-            end
-    end
+    wire t_ok = (m_rd_data == t_want);
     wire testing = !init_done;
 
     wire [127:0] m_wr_data = testing ? t_want : {8{m_wd}};
@@ -208,12 +193,10 @@ module zx_ddr (
                     // req_t flipped at least two clocks ago; the request
                     // fields were already steady when it did.
                     req_seen <= req_s[1];
-                    op     <= req_op;
                     m_addr <= req_addr;
                     m_wd   <= req_wdata;
-                    m_wr   <= (req_op == OP_WR);
+                    m_wr   <= req_we;
                     m_mask <= ~({14'd0, req_be} << {req_addr[2:0], 1'b0});
-                    open   <= 1'b1;
                     e <= E_CMD;
                 end
             E_CMD:
@@ -222,7 +205,7 @@ module zx_ddr (
                     else begin
                         e <= E_IDLE;
                         if (testing) tst <= tst + 1'b1;
-                        else begin open <= 1'b0; ack_t <= ~ack_t; end
+                        else ack_t <= ~ack_t;
                     end
                 end
             E_RD:
@@ -230,11 +213,11 @@ module zx_ddr (
                     e <= E_IDLE;
                     if (testing) begin
                         tst <= tst + 1'b1;
-                        if (!t_ok) begin tbad <= 1'b1; tval <= t_bad_word; end
+                        if (!t_ok) tbad <= 1'b1;
                         else if (tst == 2'd3) init_done <= 1'b1;
                     end else begin
                         rdata_m <= m_word;
-                        open <= 1'b0; ack_t <= ~ack_t;
+                        ack_t <= ~ack_t;
                     end
                 end
             default: e <= E_IDLE;
@@ -242,8 +225,6 @@ module zx_ddr (
     end
     assign ddr_ready = init_done;
 
-    assign diag = {8'hD3, 8'd0, m_calib, ready, tst, tbad, tval,
-                   open, op, m_cmd_ready, m_wr_rdy, op_busy, pend};
 
     // The IP's reset: held low while PLL is locking, then held low for
     // 128 cycles of ddr_clk after pll_lock is high, before releasing.

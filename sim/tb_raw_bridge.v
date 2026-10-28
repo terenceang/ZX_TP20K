@@ -74,6 +74,11 @@ module tb_raw_bridge;
         end
     end
 
+    // what the bridge says, as a string (latest byte lowest)
+    reg [8*20-1:0] said = 0;
+    integer said_n = 0;
+    always @(posedge clk) if (tx_req) begin said <= {said[8*19-1:0], tx_data}; said_n <= said_n + 1; end
+
     reg x_go_seen = 1'b0;
     always @(posedge clk) begin
         if (sd_x_go) x_go_seen <= 1'b1;
@@ -101,9 +106,12 @@ module tb_raw_bridge;
         send_rx(8'h02);
         if (card_mode !== 1'b1) $fatal(1, "card_mode should be 1 after Ctrl+B");
 
-        // Send 'i'
+        // Send 'i': the status line, sd_stat in hex
+        said_n = 0;
         send_rx("i");
         repeat (100) @(posedge clk);
+        if (said_n != 20 || said !== "\015\012H:00 S:0200 Q:00\015\012")
+            $fatal(1, "'i' answered %0d bytes: %s", said_n, said);
 
         // Send 'c'
         send_rx("c");

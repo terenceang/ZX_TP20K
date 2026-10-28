@@ -21,6 +21,7 @@
 //    * ce_48k 48 kHz -- the beeper's HDMI audio sample rate, exactly 16/9000
 // ============================================================================
 `default_nettype none
+`include "src/hdmi/hdmi_defs.vh"
 
 module clk_gen (
     input  wire       clk_in,       // 27.0 MHz onboard oscillator (H11)
@@ -100,14 +101,14 @@ module clk_gen (
     );
 
     // ------------------------------------------------------------------
-    // 3.5 MHz CPU enable: 27 MHz * 7/54, exact.  Pulse when the accumulator
-    // wraps past 54 (the fractional-N form: 7/54 of the clocks).
+    // 3.5 MHz CPU enable: VM_PIXEL_HZ * 35/270 (7/54), exact.  Pulse when
+    // the accumulator wraps (the fractional-N form).
     // ------------------------------------------------------------------
-    localparam [5:0] CE_NUM = 6'd7, CE_DEN = 6'd54;
-    reg [5:0] acc_cpu = 6'd0;
+    localparam [8:0] CE_NUM = 3_500_000 / 100_000, CE_DEN = `VM_PIXEL_HZ / 100_000;
+    reg [8:0] acc_cpu = 9'd0;
     always @(posedge clk_pixel or posedge rst_in) begin
         if (rst_in) begin
-            acc_cpu <= 6'd0;
+            acc_cpu <= 9'd0;
             ce_cpu  <= 1'b0;
         end else if (acc_cpu + CE_NUM >= CE_DEN) begin
             acc_cpu <= acc_cpu + CE_NUM - CE_DEN;
@@ -118,12 +119,12 @@ module clk_gen (
         end
     end
 
-    // 48 kHz audio enable: 27 MHz * 16/9000, exact.
-    localparam [13:0] AK_NUM = 14'd16, AK_DEN = 14'd9000;
-    reg [13:0] acc_48k = 14'd0;
+    // 48 kHz audio enable: VM_PIXEL_HZ * VM_AUDIO_HZ/VM_PIXEL_HZ, exact.
+    localparam [14:0] AK_NUM = `VM_AUDIO_HZ / 1000, AK_DEN = `VM_PIXEL_HZ / 1000;
+    reg [14:0] acc_48k = 15'd0;
     always @(posedge clk_pixel or posedge rst_in) begin
         if (rst_in) begin
-            acc_48k <= 14'd0;
+            acc_48k <= 15'd0;
             ce_48k  <= 1'b0;
         end else if (acc_48k + AK_NUM >= AK_DEN) begin
             acc_48k <= acc_48k + AK_NUM - AK_DEN;

@@ -21,19 +21,15 @@
 //      OUT 0xFE   bits 2:0 border colour, bit 4 the beeper
 //  Writes to ROM go nowhere, as on hardware.
 //
-//  Interrupts: 50 Hz from a 540 000-count divider, held for 32 T-states like
+//  Interrupts: 50 Hz from a VM_PIXEL_HZ/50 divider, held 32 T-states like
 //  the ULA's /INT.  The video frame is 59.94 Hz, a different clock entirely,
 //  which no 48K software can tell apart through BASIC.
 // ============================================================================
 
 `default_nettype none
+`include "src/hdmi/hdmi_defs.vh"
 
-module zx_core #(
-    // where the 512x384 picture starts on the raster.  zx_top subtracts the
-    // TV effect stage's pipeline latency (3 pixel clocks) here, so the picture
-    // lands at x = 104..615 after the delay.
-    parameter integer VID_X0 = 104
-) (
+module zx_core (
     input  wire        clk,        // 27 MHz pixel clock
     input  wire        reset,      // active high
     input  wire        ce_cpu,     // 3.5 MHz enable (clk_gen)
@@ -195,7 +191,6 @@ module zx_core #(
         .ram_addr(scr_ram_a),
         .ram_rdata(ram_q),
         .capturing(scr_capturing),
-        .pause_cpu(),
         .tx_req(scr_tx_req),
         .tx_data(scr_tx_data),
         .tx_busy(scr_tx_busy)
@@ -456,7 +451,7 @@ module zx_core #(
     // ------------------------------------------------------------------
     // Interrupts: 50 Hz, held 32 T-states
     // ------------------------------------------------------------------
-    localparam [19:0] FRAME_CLKS = 20'd540000;   // 27 MHz / 50 Hz
+    localparam [19:0] FRAME_CLKS = `VM_PIXEL_HZ / 50;
     reg  [19:0] frame_cnt = 20'd0;
     reg  [5:0]  int_cnt   = 6'd0;
 
@@ -494,7 +489,7 @@ module zx_core #(
     end
     assign flash = flash_r;
 
-    zx_video #(.X0(VID_X0)) u_video (
+    zx_video u_video (
         .clk(clk), .x(vid_x), .y(vid_y),
         .border(border), .flash(flash_r),
         .vram_addr(vram_addr), .vram_data(ram_q),

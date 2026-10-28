@@ -5,7 +5,9 @@
 //  side offers bytes the way sd_vol does (f_up_go held until f_up_done, then
 //  dropped the clock after), img_len arrives first (lib_found), the store
 //  fills, and tap_player plays it through rd_hold/rd_pop.  EAR is decoded
-//  back into bytes from its half periods and compared with the .TAP's blocks.
+//  back into bytes from its half periods and compared with the .TAP's blocks,
+//  then the tape is played again the way the deck replays it after its end:
+//  a rewind and a start one clock later, before the store has refilled.
 //  ce_t ticks every clock and the pilots are short, so it runs in seconds.
 // ============================================================================
 `timescale 1ns / 1ps
@@ -21,7 +23,6 @@ module tb_tape_deck;
 
     wire        ready, idle, ack;
     wire [15:0] rdata;
-    wire [31:0] diag;
     wire [15:0] DDR3_DQ;
     wire [1:0]  DDR3_DQS, DDR3_DQS_n;
     wire [13:0] DDR3_A;
@@ -40,7 +41,7 @@ module tb_tape_deck;
         .go(ready ? tm_go : 1'b0), .addr(ready ? tm_addr : 26'd0),
         .we(ready ? tm_we : 1'b0), .be(ready ? tm_be : 2'b11),
         .wdata(ready ? tm_wdata : 16'd0),
-        .rdata(rdata), .ack(ack), .idle(idle), .ready(ready), .diag(diag),
+        .rdata(rdata), .ack(ack), .idle(idle), .ready(ready),
         .ddr_memory_clk(ddr_memory_clk), .ddr_lock(ddr_lock),
         .DDR3_DQ(DDR3_DQ), .DDR3_DQS(DDR3_DQS), .DDR3_DQS_n(DDR3_DQS_n),
         .DDR3_A(DDR3_A), .DDR3_BA(DDR3_BA), .DDR3_nCS(DDR3_nCS),
@@ -51,6 +52,7 @@ module tb_tape_deck;
 
     // ---- the store ---------------------------------------------------------
     reg         reset_tm = 1'b1;
+    reg         rewind = 1'b0;
     reg  [23:0] img_len = 24'd0;
     wire        wr_ready, img_ready, rd_empty;
     wire [23:0] wr_count, rd_count;
@@ -64,7 +66,7 @@ module tb_tape_deck;
         .ddr_go(tm_go), .ddr_addr(tm_addr), .ddr_we(tm_we), .ddr_be(tm_be),
         .ddr_wdata(tm_wdata), .ddr_rdata(rdata), .ddr_ack(ack), .ddr_idle(idle),
         .wr_valid(wr_take), .wr_byte(f_up_data), .wr_ready(wr_ready),
-        .wr_count(wr_count), .img_len(img_len), .rewind(1'b0),
+        .wr_count(wr_count), .img_len(img_len), .rewind(rewind),
         .rd_count(rd_count), .img_ready(img_ready), .rd_empty(rd_empty),
         .rd_pop(rd_pop), .rd_byte(rd_byte), .clear(1'b0)
     );
@@ -82,8 +84,7 @@ module tb_tape_deck;
 
     // ---- zx_tape_lib's read glue and the player ----------------------------
     reg        tap_start = 1'b0;
-    wire       tap_rd_req, playing, ear, tap_done, sector_done;
-    wire [9:0] tap_idx;
+    wire       tap_rd_req, playing, ear, tap_done;
     reg  [7:0] rd_hold = 8'h00;
     assign rd_pop = tap_rd_req && !rd_empty;
     wire tap_eof = (img_len != 24'd0) && (rd_count >= img_len);
@@ -95,10 +96,9 @@ module tb_tape_deck;
     always @(posedge clk) if (tap_done) ended <= 1'b1;
 
     tap_player #(.PILOT_HDR(14'd40), .PILOT_DAT(14'd30), .PAUSE_T(22'd2000)) u_player (
-        .clk(clk), .reset(reset_tm), .ce_t(1'b1),
+        .clk(clk), .reset(reset_tm | rewind), .ce_t(1'b1),
         .start(tap_start), .playing(playing),
-        .idx(tap_idx), .rd_req(tap_rd_req), .rd_data(rd_hold),
-        .buf_ready(!rd_empty), .sector_done(sector_done),
+        .rd_req(tap_rd_req), .rd_data(rd_hold), .rd_ready(!rd_empty || tap_eof),
         .ear(ear), .done(tap_done)
     );
 
@@ -144,7 +144,29 @@ module tb_tape_deck;
         end
     end
 
-    integer i, errors = 0, k;
+    integer i, errors = 0, k, pass;
+
+    // the two blocks' payloads (flag..checksum), without the length words
+    task check_ear;
+        begin
+            wait (got_n >= N - 4);
+            repeat (5000) @(posedge clk);
+            k = 0;
+            for (i = 0; i < N; i = i + 1) begin
+                if (i == 0 || i == 1 || i == 2 + tap[0] || i == 3 + tap[0]) ; // length words
+                else begin
+                    if (got[k] !== tap[i]) begin
+                        if (errors < 8) $display("FAIL: pass %0d EAR byte %0d = %02x, file byte %0d = %02x", pass, k, got[k], i, tap[i]);
+                        errors = errors + 1;
+                    end
+                    k = k + 1;
+                end
+            end
+            wait (ended || !playing);
+            if (!ended) begin $display("FAIL: pass %0d never reached the end of the tape", pass); errors = errors + 1; end
+        end
+    endtask
+
     initial begin
         repeat (20) @(posedge clk);
         @(negedge clk); ddr_lock <= 1'b1;
@@ -167,31 +189,24 @@ module tb_tape_deck;
         if (wr_count != N) begin $display("FAIL: wrote %0d bytes, expected %0d", wr_count, N); $finish; end
 
         repeat (50) @(posedge clk);
+        pass = 1;
         @(negedge clk); tap_start <= 1'b1; @(negedge clk); tap_start <= 1'b0;
+        check_ear;
 
-        // the two blocks' payloads (flag..checksum), without the length words
-        wait (got_n >= N - 4);
-        repeat (5000) @(posedge clk);
-        k = 0;
-        for (i = 0; i < N; i = i + 1) begin
-            if (i == 0 || i == 1 || i == 2 + tap[0] || i == 3 + tap[0]) ; // length words
-            else begin
-                if (got[k] !== tap[i]) begin
-                    if (errors < 8) $display("FAIL: EAR byte %0d = %02x, file byte %0d = %02x", k, got[k], i, tap[i]);
-                    errors = errors + 1;
-                end
-                k = k + 1;
-            end
-        end
-        wait (ended || !playing);
-        if (!ended) begin $display("FAIL: the player never reached the end of the tape"); errors = errors + 1; end
-        if (errors == 0) $display("PASS: library deck path (66-byte .TAP, card -> DDR3 -> player -> EAR, decoded intact, end of tape)");
+        // play after the end: zx_tape_lib's S_END + play
+        pass = 2;
+        repeat (100) @(posedge clk);
+        @(negedge clk); got_n = 0; ended <= 1'b0; rewind <= 1'b1;
+        @(negedge clk); rewind <= 1'b0; tap_start <= 1'b1;
+        @(negedge clk); tap_start <= 1'b0;
+        check_ear;
+        if (errors == 0) $display("PASS: library deck path (66-byte .TAP, card -> DDR3 -> player -> EAR, decoded intact, end of tape, replayed)");
         else             $display("FAIL: %0d bad bytes on EAR", errors);
         $finish;
     end
 
     initial begin
-        #80ms;
+        #160ms;
         $display("FAIL: watchdog (wr_count=%0d img_ready=%b rd_count=%0d got=%0d w_avail=%b w_half=%b busy=%b idle=%b f_up_go=%b wr_ready=%b i=%0d)",
                  wr_count, img_ready, rd_count, got_n, u_mem.w_avail, u_mem.w_half, u_mem.busy, idle, f_up_go, wr_ready, i);
         $finish;

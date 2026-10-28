@@ -25,7 +25,6 @@ module tb_ddr;
 
     wire        ready, idle, ack;
     wire [15:0] rdata;
-    wire [31:0] diag;
 
     reg        go = 1'b0;
     reg [25:0] addr = 26'd0;
@@ -46,7 +45,7 @@ module tb_ddr;
         .ddr_ref_clk(clk),
         .go(go), .addr(addr), .we(we), .be(be), .wdata(wdata),
         .rdata(rdata), .ack(ack), .idle(idle),
-        .ready(ready), .diag(diag),
+        .ready(ready),
         .ddr_memory_clk(ddr_memory_clk), .ddr_lock(pll_lock),
         .DDR3_DQ(DDR3_DQ), .DDR3_DQS(DDR3_DQS), .DDR3_DQS_n(DDR3_DQS_n),
         .DDR3_A(DDR3_A), .DDR3_BA(DDR3_BA), .DDR3_nCS(DDR3_nCS),
@@ -82,7 +81,7 @@ module tb_ddr;
 
         // the self-test runs after the model's calibration; ready means it passed
         wait (ready === 1'b1);
-        $display("ok: self-test passed, DDR3 ready (diag %08x)", diag);
+        $display("ok: self-test passed, DDR3 ready");
 
         // word address 0x1000: inside the model's region 0
         op(1'b1, 26'h1000, 2'b11, 16'hBEEF);
@@ -103,7 +102,7 @@ module tb_ddr;
     // watchdog
     initial begin
         #2ms;
-        $display("FAIL: watchdog expired (diag %08x)", diag);
+        $display("FAIL: watchdog expired (self-test step %0d, bad %b)", u_dut.tst, u_dut.tbad);
         $finish;
     end
 
