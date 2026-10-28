@@ -2,6 +2,6 @@
 `ifndef VERSION_VH
 `define VERSION_VH
 
-`define FW_VER_TEXT "\015\012FW:v1.0.15\015\012"
+`define FW_VER_TEXT "\015\012FW:v1.0.16\015\012"
 `define FW_VER_LEN  8'd14
 `endif

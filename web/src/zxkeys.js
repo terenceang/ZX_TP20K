@@ -266,3 +266,42 @@ export const LAYOUT = [
     { id: 'space', main: 'BREAK',  sub: 'SPACE', w: 2.05 },
   ],
 ]
+
+// ---------------------------------------------------------------------------
+//  Joysticks -- the keyboard-reading kinds, so the board needs nothing new:
+//  Sinclair (Interface 2) ports 1/2, Cursor (Protek/AGF) and plain QAOP.  The
+//  PC arrows + Ctrl and the first gamepad drive whichever is selected.
+//  (Kempston is a port, 0x1F, not keys -- that would be RTL.)
+// ---------------------------------------------------------------------------
+
+export const JOYSTICKS = {
+  sinclair1: { label: 'Sinclair 1 (6-0)', up: '9', down: '8', left: '6', right: '7', fire: '0' },
+  sinclair2: { label: 'Sinclair 2 (1-5)', up: '4', down: '3', left: '1', right: '2', fire: '5' },
+  cursor:    { label: 'Cursor (5-8, 0)',  up: '7', down: '6', left: '5', right: '8', fire: '0' },
+  qaop:      { label: 'QAOP + space',     up: 'q', down: 'a', left: 'o', right: 'p', fire: 'space' },
+}
+
+export const JOY_DIRS = ['up', 'down', 'left', 'right', 'fire']
+
+const PC_TO_DIR = {
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  ControlLeft: 'fire', ControlRight: 'fire',
+}
+
+/** A PC key as the selected joystick's chord, or null (joystick off / not a joystick key). */
+export function joyChord(code, scheme) {
+  const j = JOYSTICKS[scheme]
+  const dir = PC_TO_DIR[code]
+  return j && dir ? chord(j[dir], false, false) : null
+}
+
+/** A Gamepad (standard mapping) as {up, down, left, right, fire}: left stick or d-pad, A/B fire. */
+export function padDirs(pad) {
+  const [x = 0, y = 0] = pad.axes
+  const b = (i) => Boolean(pad.buttons[i]?.pressed)
+  return {
+    up: y < -0.5 || b(12), down: y > 0.5 || b(13),
+    left: x < -0.5 || b(14), right: x > 0.5 || b(15),
+    fire: b(0) || b(1),
+  }
+}

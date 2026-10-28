@@ -8,11 +8,12 @@
 //
 //  Presses go out as FE <pos> <down>.  The PC keyboard is captured too: left
 //  shift is CAPS SHIFT, right shift or alt SYMBOL SHIFT, and a shifted symbol
-//  becomes the Spectrum's own chord.
+//  becomes the Spectrum's own chord.  With a joystick selected, the arrows +
+//  Ctrl and the first gamepad press that joystick's keys.
 // ============================================================================
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { LAYOUT, KEY_BY_ID, pos as posOf, eventToChord, typeText } from '../zxkeys.js'
+import { LAYOUT, KEY_BY_ID, pos as posOf, eventToChord, typeText, JOYSTICKS, JOY_DIRS, joyChord, padDirs } from '../zxkeys.js'
 import { encodeKey, encodeAllUp } from '../protocol.js'
 
 /** width of a key, in normal-key units */
@@ -59,6 +60,37 @@ export default function Keyboard({ link, connected }) {
     for (const k of [...chord.keys].reverse()) release(k.id)
   }, [connected, release])
 
+  // ---- joystick -----------------------------------------------------------
+  const [joy, setJoyState] = useState(() => {
+    try { return localStorage.getItem('zx_joystick') || 'off' } catch { return 'off' }
+  })
+  const setJoy = (j) => {
+    setJoyState(j)
+    try { localStorage.setItem('zx_joystick', j) } catch {}
+  }
+
+  // the first gamepad, polled once a frame; only changes go out
+  useEffect(() => {
+    const map = JOYSTICKS[joy]
+    if (!connected || !map) return
+    let raf
+    let prev = {}
+    const tick = () => {
+      const pad = [...navigator.getGamepads()].find(Boolean)
+      const now = pad ? padDirs(pad) : {}
+      for (const d of JOY_DIRS) {
+        if (!now[d] !== !prev[d]) (now[d] ? press : release)(map[d])
+      }
+      prev = now
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      cancelAnimationFrame(raf)
+      for (const d of JOY_DIRS) if (prev[d]) release(map[d])
+    }
+  }, [connected, joy, press, release])
+
   // ---- PC keyboard --------------------------------------------------------
   const downChords = useRef(new Map()) // ev.code -> chord (for the up event)
 
@@ -66,7 +98,7 @@ export default function Keyboard({ link, connected }) {
     if (!connected) return
     const onKeyDown = (ev) => {
       if (ev.repeat) { ev.preventDefault(); return }
-      const chord = eventToChord(ev)
+      const chord = joyChord(ev.code, joy) ?? eventToChord(ev)
       if (!chord) return
       ev.preventDefault()
       downChords.current.set(ev.code, chord)
@@ -91,7 +123,7 @@ export default function Keyboard({ link, connected }) {
       window.removeEventListener('keyup', onKeyUp)
       window.removeEventListener('blur', onBlur)
     }
-  }, [connected, link, chordDown, chordUp])
+  }, [connected, link, joy, chordDown, chordUp])
 
   // ---- paste a BASIC listing ---------------------------------------------
   const [pasteOpen, setPasteOpen] = useState(false)
@@ -182,6 +214,15 @@ export default function Keyboard({ link, connected }) {
         >
           Release all
         </button>
+        <label title="arrows + Ctrl, or a gamepad">
+          Joystick{' '}
+          <select value={joy} onChange={(e) => setJoy(e.target.value)}>
+            <option value="off">off</option>
+            {Object.entries(JOYSTICKS).map(([id, j]) => (
+              <option key={id} value={id}>{j.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       {pasteOpen && (

@@ -41,3 +41,21 @@ test('Backspace is DELETE: CAPS SHIFT + 0', () => {
   const c = eventToChord({ code: 'Backspace', key: 'Backspace' })
   assert.deepEqual(c.keys.map((k) => k.pos).sort((a, b) => a - b), [0, 20])
 })
+
+test('joystick: arrows and ctrl follow the selected scheme, off passes through', async () => {
+  const { joyChord } = await import('../src/zxkeys.js')
+  assert.deepEqual(joyChord('ArrowUp', 'cursor').keys, [{ id: '7', pos: pos(KEY_BY_ID['7']) }])
+  assert.deepEqual(joyChord('ControlLeft', 'sinclair1').keys, [{ id: '0', pos: pos(KEY_BY_ID['0']) }])
+  assert.deepEqual(joyChord('ArrowLeft', 'qaop').keys, [{ id: 'o', pos: pos(KEY_BY_ID.o) }])
+  assert.equal(joyChord('ArrowUp', 'off'), null)
+  assert.equal(joyChord('KeyQ', 'cursor'), null)
+})
+
+test('joystick: gamepad stick, d-pad and fire', async () => {
+  const { padDirs } = await import('../src/zxkeys.js')
+  const btn = (on) => Array.from({ length: 16 }, (_, i) => ({ pressed: on.includes(i) }))
+  assert.deepEqual(padDirs({ axes: [-1, 0.1], buttons: btn([0]) }),
+    { up: false, down: false, left: true, right: false, fire: true })
+  assert.deepEqual(padDirs({ axes: [0, 0], buttons: btn([12, 15]) }),
+    { up: true, down: false, left: false, right: true, fire: false })
+})
